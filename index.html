@@ -1,0 +1,2795 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>字幕自助修改工具</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+  :root {
+    --bg: #F8FAFC; --line: #E2E8F0; --ink: #0F172A; --blue: #2563EB; --stage: #09090B;
+    --shadow: 0 1px 2px rgba(15,23,42,.04), 0 1px 3px rgba(15,23,42,.03);
+  }
+  html, body { background: var(--bg); }
+  body {
+    font-family: 'Inter', 'Noto Sans TC', system-ui, -apple-system, 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+    -webkit-font-smoothing: antialiased; color: #0F172A;
+  }
+  .tnum { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1; }
+  .card { background: #fff; border: 1px solid var(--line); box-shadow: var(--shadow); }
+
+  /* 按鈕 */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; font-weight: 500; border-radius: 8px;
+         transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s; white-space: nowrap; }
+  .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(37,99,235,.25); }
+  .btn-primary { background: var(--ink); color: #fff; }
+  .btn-primary:hover { background: #1E293B; }
+  .btn-ghost { background: #fff; color: #334155; border: 1px solid var(--line); }
+  .btn-ghost:hover { background: #F8FAFC; border-color: #CBD5E1; color: #0F172A; }
+  .icon-btn { width: 32px; height: 32px; border-radius: 8px; display: inline-grid; place-items: center; color: #475569; transition: background-color .15s, color .15s; }
+  .icon-btn:hover { background: #F1F5F9; color: #0F172A; }
+  .icon-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(37,99,235,.25); }
+
+  /* 分段控制器 */
+  .seg-group { display: inline-flex; padding: 2px; background: #F1F5F9; border-radius: 8px; gap: 2px; }
+  .seg { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 6px; font-size: 12.5px;
+         font-weight: 500; color: #64748B; transition: all .15s; }
+  .seg:hover { color: #0F172A; }
+  .seg[aria-selected="true"] { background: #fff; color: #0F172A; box-shadow: 0 1px 2px rgba(15,23,42,.08), 0 0 0 1px rgba(15,23,42,.04); }
+  .seg-sm .seg { height: 24px; padding: 0 8px; font-size: 12px; }
+
+  /* 進度條 */
+  .range { -webkit-appearance: none; appearance: none; height: 16px; background: transparent; cursor: pointer; --p: 0%; }
+  .range:focus { outline: none; }
+  .range::-webkit-slider-runnable-track { height: 4px; border-radius: 999px;
+    background: linear-gradient(to right, var(--blue) var(--p), #E2E8F0 var(--p)); }
+  .range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #fff;
+    border: 2px solid var(--blue); margin-top: -4px; box-shadow: 0 1px 3px rgba(15,23,42,.2); transition: transform .12s; }
+  .range:hover::-webkit-slider-thumb { transform: scale(1.15); }
+  .range::-moz-range-track { height: 4px; border-radius: 999px; background: #E2E8F0; }
+  .range::-moz-range-progress { height: 4px; border-radius: 999px; background: var(--blue); }
+  .range::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 2px solid var(--blue); }
+
+  /* 字幕列 */
+  .cue { position: relative; transition: background-color .15s; }
+  .cue::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: transparent; transition: background-color .15s; }
+  .cue:hover { background: #F5F8FF; }
+  .cue:hover::before { background: #93C5FD; }
+  .cue.active { background: #EFF6FF; }
+  .cue.active::before { background: var(--blue); }
+  .cue .cue-time { color: #64748B; }
+  .cue.active .cue-time { color: var(--blue); font-weight: 600; }
+  .cue-text { resize: none; overflow: hidden; background: transparent; border: 1px solid transparent; outline: none;
+              transition: background-color .18s, border-color .18s, box-shadow .18s; min-height: 34px; }
+  .cue-text:hover { cursor: text; }
+  .cue-text:focus { background: #fff; border-color: #BFDBFE; box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+  .cue.edited .cue-text:not(:focus) { color: #0F172A; }
+  .cue.empty:not(.deleted) .cue-text { border-color: #FECACA; background: #FEF2F2; }
+  .cue.deleted .cue-text { text-decoration: line-through; color: #94A3B8; cursor: default; }
+  .cue.deleted .cue-time { color: #CBD5E1; }
+  .cue.deleted:hover { background: #F8FAFC; }
+  .cue.deleted:hover::before { background: #E2E8F0; }
+  .row-act { opacity: 0; transition: opacity .15s; }
+  .cue:hover .row-act, .cue:focus-within .row-act { opacity: 1; }
+  .time-chip { height: 22px; padding: 0 7px; border-radius: 6px; border: 1px solid #E2E8F0; background: #fff; color: #334155;
+               display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; transition: all .15s; }
+  .time-chip:hover { border-color: #93C5FD; color: #1D4ED8; }
+
+  /* 分頁（底線式） */
+  .tab { position: relative; height: 100%; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; font-size: 13.5px;
+         font-weight: 500; color: #64748B; transition: color .15s; }
+  .tab:hover { color: #0F172A; }
+  .tab::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: 2px; background: transparent; transition: background-color .15s; }
+  .tab[aria-selected="true"] { color: #0F172A; }
+  .tab[aria-selected="true"]::after { background: #0F172A; }
+
+  /* 註記 */
+  .cat-chip { height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 500; color: #64748B; border: 1px solid transparent;
+              display: inline-flex; align-items: center; gap: 5px; transition: all .15s; }
+  .cat-chip:hover { background: #F1F5F9; color: #0F172A; }
+  .cat-chip[aria-pressed="true"] { background: #fff; color: #0F172A; border-color: #E2E8F0; box-shadow: 0 1px 2px rgba(15,23,42,.06); }
+  .cat-dot { width: 6px; height: 6px; border-radius: 999px; flex-shrink: 0; }
+  .note-cat { -webkit-appearance: none; appearance: none; font-size: 11.5px; font-weight: 500; color: #475569; background: #F1F5F9;
+              border-radius: 999px; padding: 1px 10px 1px 18px; cursor: pointer; border: 1px solid transparent; }
+  .note-cat:hover { border-color: #E2E8F0; background: #fff; }
+  .note-cat:focus { outline: none; box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
+  .marker { position: absolute; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 999px; background: #F59E0B;
+            border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(15,23,42,.08); cursor: pointer; pointer-events: auto; transition: transform .12s; }
+  .marker:hover { transform: scale(1.4); }
+  .marker-span { position: absolute; top: 50%; height: 4px; margin-top: -2px; background: rgba(245,158,11,.35); border-radius: 2px; pointer-events: none; }
+
+  /* 字幕疊加 */
+  #overlayText { white-space: pre-line; font-size: clamp(14px, 2.1vw, 24px); letter-spacing: .01em; }
+
+  #dropOverlay { pointer-events: none; }
+  #ytHost iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .spin { width: 14px; height: 14px; border-radius: 999px; border: 2px solid #BFDBFE; border-top-color: #2563EB; animation: sp .8s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .field { width: 100%; height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #E2E8F0; background: #fff; font-size: 13px;
+           transition: border-color .15s, box-shadow .15s; }
+  .field:focus { outline: none; border-color: #BFDBFE; box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+  .fade-in { animation: fin .2s ease-out; }
+  @keyframes fin { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: none; } }
+  kbd { font-family: 'Inter', sans-serif; font-size: 11px; padding: 1px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; background: #fff; color: #334155; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: #CBD5E1; background-clip: content-box; border: 3px solid transparent; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- SVG 圖示 -->
+<svg xmlns="http://www.w3.org/2000/svg" class="hidden">
+  <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5.5v13a1 1 0 0 0 1.52.85l10.4-6.5a1 1 0 0 0 0-1.7L9.52 4.65A1 1 0 0 0 8 5.5z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect fill="currentColor" x="6.5" y="5" width="4" height="14" rx="1.2"/><rect fill="currentColor" x="13.5" y="5" width="4" height="14" rx="1.2"/></symbol>
+  <symbol id="i-prev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 20 9 12l10-8v16z"/><path d="M5 19V5"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 4 10 8-10 8V4z"/><path d="M19 5v14"/></symbol>
+  <symbol id="i-replay" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="i-film" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M7 3v18M17 3v18M2 9h5M2 15h5M17 9h5M17 15h5"/></symbol>
+  <symbol id="i-cc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M7 15h4M15 15h2M7 11h2M13 11h4"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></symbol>
+  <symbol id="i-table" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l1.9 5.6 5.6 1.9-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.9z"/><path d="M19 15l.9 2.1 2.1.9-2.1.9L19 21l-.9-2.1-2.1-.9 2.1-.9z" opacity=".7"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-yt" viewBox="0 0 24 24"><rect x="1.5" y="4.5" width="21" height="15" rx="4.5" fill="currentColor"/><path d="M10 9v6l5.2-3z" fill="#fff"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+</svg>
+
+<!-- 頂部導覽列 56px -->
+<header class="h-14 sticky top-0 z-30 bg-white/85 backdrop-blur border-b border-[#E2E8F0]">
+  <div class="h-full max-w-[1440px] mx-auto px-4 sm:px-6 flex items-center gap-3">
+    <div class="flex items-center gap-2.5 shrink-0">
+      <div class="w-7 h-7 rounded-md bg-[#0F172A] text-white grid place-items-center">
+        <svg class="w-4 h-4"><use href="#i-cc"/></svg>
+      </div>
+      <span class="font-semibold text-[15px] tracking-tight">字幕審片</span>
+      <span class="tnum text-[11px] text-slate-400 font-medium" title="版本：v1.2（2026-11-20）。收到新版檔案時，請刪除舊檔。">v1.2</span>
+    </div>
+    <div class="w-px h-5 bg-[#E2E8F0] mx-1 hidden sm:block"></div>
+
+    <div class="hidden sm:flex items-center gap-1.5 min-w-0">
+      <span class="inline-flex items-center gap-1.5 h-7 pl-2 pr-2.5 rounded-full border border-[#E2E8F0] bg-[#F8FAFC] text-[12.5px] text-slate-600 min-w-0" title="影片">
+        <svg class="w-3.5 h-3.5 text-slate-400 shrink-0"><use href="#i-film"/></svg>
+        <span id="videoName" class="truncate max-w-[180px] font-medium text-slate-700">範例影片</span>
+        <span id="videoDemoTag" class="text-[10.5px] px-1.5 rounded bg-slate-200/70 text-slate-500">範例</span>
+      </span>
+      <span class="inline-flex items-center gap-1.5 h-7 pl-2 pr-2.5 rounded-full border border-[#E2E8F0] bg-[#F8FAFC] text-[12.5px] text-slate-600 min-w-0" title="字幕">
+        <svg class="w-3.5 h-3.5 text-slate-400 shrink-0"><use href="#i-cc"/></svg>
+        <span id="srtName" class="truncate max-w-[180px] font-medium text-slate-700">範例字幕.srt</span>
+        <span id="srtDemoTag" class="text-[10.5px] px-1.5 rounded bg-slate-200/70 text-slate-500">範例</span>
+      </span>
+    </div>
+
+    <div class="relative">
+      <button id="changeBtn" class="btn btn-ghost h-7 px-2.5 text-[12.5px]" aria-haspopup="menu" aria-expanded="false">
+        檔案 <svg class="w-3.5 h-3.5 text-slate-400"><use href="#i-chev"/></svg>
+      </button>
+      <div id="changeMenu" class="hidden fade-in absolute left-0 top-9 w-64 card rounded-xl p-1.5 z-40 shadow-[0_8px_24px_rgba(15,23,42,.08)]" role="menu">
+        <button id="ytMenuBtn" class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-50 text-[13px] text-left" role="menuitem">
+          <svg class="w-4 h-4 text-[#FF0033]"><use href="#i-yt"/></svg><span class="flex-1">貼上 YouTube 連結…</span>
+        </button>
+        <label class="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-50 cursor-pointer text-[13px]" role="menuitem">
+          <svg class="w-4 h-4 text-slate-500"><use href="#i-film"/></svg>
+          <span class="flex-1">上傳影片檔…</span><span class="text-[11px] text-slate-400">.mp4 .mov</span>
+          <input id="videoInput" type="file" accept=".mp4,.mov,.m4v,video/mp4,video/quicktime" class="hidden">
+        </label>
+        <label class="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-50 cursor-pointer text-[13px]" role="menuitem">
+          <svg class="w-4 h-4 text-slate-500"><use href="#i-cc"/></svg>
+          <span class="flex-1">選擇字幕…</span><span class="text-[11px] text-slate-400">.srt</span>
+          <input id="srtInput" type="file" accept=".srt" class="hidden">
+        </label>
+        <div class="h-px bg-[#E2E8F0] my-1"></div>
+        <label class="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-50 cursor-pointer text-[13px]" role="menuitem">
+          <svg class="w-4 h-4 text-slate-500"><use href="#i-folder"/></svg>
+          <span class="flex-1">開啟進度檔…</span><span class="text-[11px] text-slate-400">.json</span>
+          <input id="projInput" type="file" accept=".json,application/json" class="hidden">
+        </label>
+        <button id="saveProjMenuBtn" class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-50 text-[13px] text-left" role="menuitem">
+          <svg class="w-4 h-4 text-slate-500"><use href="#i-save"/></svg><span class="flex-1">儲存進度檔</span><span class="text-[11px] text-slate-400">Ctrl+S</span>
+        </button>
+        <div class="h-px bg-[#E2E8F0] my-1"></div>
+        <button id="demoBtn" class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-50 text-[13px] text-left" role="menuitem">
+          <svg class="w-4 h-4 text-slate-500"><use href="#i-replay"/></svg> 重新載入範例
+        </button>
+        <p class="px-2.5 pt-1.5 pb-1 text-[11.5px] text-slate-400">也可以直接把檔案拖進頁面，或在頁面上按 Ctrl+V 貼上 YouTube 連結</p>
+      </div>
+    </div>
+
+    <div class="ml-auto flex items-center gap-2">
+      <span id="saveStatus" class="hidden lg:inline-flex items-center gap-1.5 text-[12px] text-slate-400 mr-1" title="檔案只在這台電腦處理，不會上傳">
+        <svg class="w-3.5 h-3.5"><use href="#i-lock"/></svg>本機處理・不上傳
+      </span>
+      <button id="aiBtn" class="btn h-8 px-3 text-[13px] text-white bg-[#2563EB] hover:bg-[#1D4ED8]" title="上傳影片後，用 AI 自動聽打字幕">
+        <svg class="w-4 h-4"><use href="#i-spark"/></svg><span class="hidden md:inline">AI 自動生成字幕</span>
+      </button>
+      <button id="saveProjBtn" class="btn btn-ghost h-8 px-3 text-[13px]" title="把目前進度存成檔案，下次或換電腦可以接著做（Ctrl+S）">
+        <svg class="w-4 h-4"><use href="#i-save"/></svg><span class="hidden sm:inline">儲存進度</span>
+      </button>
+      <button id="copyBtn" class="btn btn-ghost h-8 w-8 !px-0 text-[13px]" title="複製完整 SRT 內容" aria-label="複製完整 SRT 內容">
+        <svg class="w-4 h-4"><use href="#i-copy"/></svg>
+      </button>
+      <button id="exportBtn" class="btn btn-primary h-8 px-3.5 text-[13px]">
+        <svg class="w-4 h-4"><use href="#i-download"/></svg>下載 .srt
+      </button>
+      <button id="settingsBtn" class="icon-btn relative" title="設定（API Key）" aria-label="設定">
+        <svg class="w-[18px] h-[18px]"><use href="#i-gear"/></svg>
+        <span id="keyDot" class="hidden absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-[1440px] mx-auto px-4 sm:px-6 py-5 space-y-4">
+
+  <!-- 範例模式提示（載入自己的檔案後自動隱藏） -->
+  <!-- 影片載入列：以 YouTube 連結為主，保留上傳影片檔 -->
+  <div id="demoHint" class="card rounded-xl px-3 py-3 sm:px-4">
+    <div class="flex flex-wrap items-center gap-2">
+      <form id="ytForm" class="flex items-center gap-2 flex-1 min-w-[300px]" autocomplete="off">
+        <div class="w-8 h-8 rounded-lg bg-red-50 text-[#FF0033] grid place-items-center shrink-0"><svg class="w-[18px] h-[18px]"><use href="#i-yt"/></svg></div>
+        <div class="relative flex-1">
+          <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"><use href="#i-link"/></svg>
+          <input id="ytInput" type="text" inputmode="url" spellcheck="false" class="field !h-9 !pl-9" placeholder="貼上 YouTube 影片連結，例如 https://youtu.be/…" aria-label="YouTube 影片連結">
+        </div>
+        <button type="submit" class="btn btn-primary h-9 px-4 text-[13px]">載入影片</button>
+      </form>
+      <span class="text-[12px] text-slate-400 px-1">或</span>
+      <label class="btn btn-ghost h-9 px-3 text-[13px] cursor-pointer">
+        <svg class="w-4 h-4"><use href="#i-film"/></svg>上傳影片檔
+        <input id="videoInput2" type="file" accept=".mp4,.mov,.m4v,video/mp4,video/quicktime" class="hidden">
+      </label>
+      <label class="btn btn-ghost h-9 px-3 text-[13px] cursor-pointer">
+        <svg class="w-4 h-4"><use href="#i-cc"/></svg>選擇字幕
+        <input id="srtInput2" type="file" accept=".srt" class="hidden">
+      </label>
+      <button id="hintClose" class="icon-btn" title="收起載入列（可從「檔案」選單再打開）" aria-label="收起載入列"><svg class="w-4 h-4"><use href="#i-x"/></svg></button>
+    </div>
+    <p id="demoLine" class="mt-2 pl-10 text-[12px] text-slate-500 leading-relaxed">目前顯示的是範例畫面與字幕。貼上 YouTube 連結（公開或「不公開」影片皆可），或上傳影片檔，再把 .srt 字幕拖進來即可開始。試試看：第 2 句的型號「X2OO」打錯了，請改成 X200。</p>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+
+    <!-- 左：播放器 -->
+    <section class="lg:col-span-7 space-y-4">
+      <div class="card rounded-xl overflow-hidden">
+        <div id="stage" class="relative bg-[#09090B] aspect-video cursor-pointer select-none group">
+          <canvas id="demoCanvas" width="1280" height="720" class="absolute inset-0 w-full h-full"></canvas>
+          <video id="video" class="absolute inset-0 w-full h-full hidden bg-[#09090B]" playsinline preload="metadata"></video>
+          <div id="ytHost" class="hidden absolute inset-0 bg-[#09090B]"></div>
+          <div id="ytNotice" class="hidden absolute top-3 inset-x-3 z-10 rounded-lg bg-amber-50/95 border border-amber-200 text-amber-800 text-[12px] px-3 py-2 leading-relaxed pointer-events-none"></div>
+
+          <!-- 暫停時的中央播放鈕 -->
+          <div id="bigPlay" class="absolute inset-0 grid place-items-center pointer-events-none transition-opacity duration-200">
+            <div class="w-14 h-14 rounded-full bg-white/10 backdrop-blur-md border border-white/15 grid place-items-center text-white group-hover:bg-white/15">
+              <svg class="w-6 h-6 translate-x-[1px]"><use href="#i-play"/></svg>
+            </div>
+          </div>
+
+          <div class="absolute inset-x-0 bottom-[6%] flex justify-center px-8 pointer-events-none">
+            <span id="overlayText" class="hidden bg-black/65 backdrop-blur-[2px] text-white font-medium rounded-md px-3.5 py-1 text-center leading-snug"></span>
+          </div>
+
+          <div id="videoError" class="hidden absolute inset-0 bg-[#09090B]/95 text-white grid place-items-center p-6 text-center">
+            <div class="max-w-sm">
+              <p id="videoErrorTitle" class="text-[15px] font-semibold mb-1.5">這個影片無法在瀏覽器播放</p>
+              <p id="videoErrorText" class="text-zinc-400 text-[13px] leading-relaxed">部分 .mov 檔使用瀏覽器不支援的編碼。請剪輯同仁匯出成 .mp4（H.264）格式後再試一次。</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部整合控制列 -->
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-2 px-3 py-2.5 border-t border-[#E2E8F0]">
+          <div class="flex items-center gap-1">
+            <button id="playBtn" class="w-9 h-9 rounded-full bg-[#0F172A] hover:bg-[#1E293B] text-white grid place-items-center transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/25" title="播放／暫停（空白鍵）" aria-label="播放">
+              <svg id="playIcon" class="w-4 h-4 translate-x-[1px]"><use href="#i-play"/></svg>
+            </button>
+            <button id="prevBtn" class="icon-btn" title="上一句" aria-label="上一句"><svg class="w-4 h-4"><use href="#i-prev"/></svg></button>
+            <button id="nextBtn" class="icon-btn" title="下一句" aria-label="下一句"><svg class="w-4 h-4"><use href="#i-next"/></svg></button>
+            <button id="replayBtn" class="icon-btn" title="重播本句" aria-label="重播本句"><svg class="w-4 h-4"><use href="#i-replay"/></svg></button>
+          </div>
+          <div class="flex items-center gap-2.5 flex-1 min-w-[200px]">
+            <span id="curTime" class="tnum text-[12px] text-slate-700 font-medium w-10 text-right">00:00</span>
+            <div class="relative flex-1 flex items-center">
+              <input id="seekBar" type="range" min="0" max="1000" value="0" class="range w-full" aria-label="播放進度">
+              <div id="markers" class="absolute inset-y-0 left-[6px] right-[6px] pointer-events-none"></div>
+            </div>
+            <span id="durTime" class="tnum text-[12px] text-slate-400 w-10">00:00</span>
+          </div>
+          <div class="seg-group seg-sm" role="tablist" aria-label="播放速度" id="speedGroup">
+            <button class="seg tnum" data-rate="1" aria-selected="true">1x</button>
+            <button class="seg tnum" data-rate="1.25" aria-selected="false">1.25x</button>
+            <button class="seg tnum" data-rate="1.5" aria-selected="false">1.5x</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card rounded-xl px-4 py-3.5">
+        <div class="flex items-center gap-2 mb-2">
+          <svg class="w-4 h-4 text-slate-400"><use href="#i-info"/></svg>
+          <p class="text-[13px] font-semibold">使用方式</p>
+        </div>
+        <ol class="text-[12.5px] text-slate-600 space-y-1 list-decimal pl-5 marker:text-slate-400">
+          <li>貼上 YouTube 連結（或上傳影片檔），再載入字幕檔；沒有字幕檔時，可上傳影片檔後按「AI 自動生成字幕」讓 AI 先聽打一版。</li>
+          <li>按播放，右側會自動標出正在講的那一句。</li>
+          <li>點任一句可跳到該處；直接點文字即可修改錯字，修改時影片會自動暫停。漏掉的句子可按「新增字幕」補上，多餘的句子滑過去按垃圾桶刪除。</li>
+          <li>畫面、剪接或聲音需要調整時，切到「影片註記」寫下說明，會自動記錄當下時間。</li>
+          <li>字幕按右上角「下載 .srt」；影片註記在註記分頁按「匯出修改文件」，兩個檔案一起交給剪輯同仁。</li>
+          <li>做到一半也不怕：修改會自動暫存在這台電腦，下次載入同一支影片會問你要不要接續。要換電腦或交給同事接手，按「儲存進度」存成進度檔即可。</li>
+        </ol>
+        <p class="mt-2.5 text-[12px] text-slate-400 flex flex-wrap items-center gap-1.5">
+          快捷鍵：<kbd>Space</kbd> 播放／暫停　<kbd>A</kbd> 新增字幕　<kbd>N</kbd> 新增影片註記　<kbd>Esc</kbd> 結束編輯
+        </p>
+      </div>
+    </section>
+
+    <!-- 右：字幕列表 -->
+    <section class="lg:col-span-5 card rounded-xl flex flex-col overflow-hidden lg:sticky lg:top-[76px] lg:h-[calc(100vh-96px)] lg:min-h-[460px]">
+      <div class="h-12 pl-2 pr-3 border-b border-[#E2E8F0] flex items-center gap-2 shrink-0">
+        <div class="flex h-full" role="tablist" aria-label="編輯分頁">
+          <button class="tab" data-tab="subs" role="tab" aria-selected="true">
+            <svg class="w-4 h-4 opacity-70"><use href="#i-cc"/></svg>字幕修改
+          </button>
+          <button class="tab" data-tab="notes" role="tab" aria-selected="false">
+            <svg class="w-4 h-4 opacity-70"><use href="#i-note"/></svg>影片註記
+            <span id="tabNotesCount" class="tnum min-w-[18px] h-[18px] px-1 rounded-full text-[11px] leading-[18px] text-center bg-slate-200 text-slate-500">0</span>
+          </button>
+        </div>
+
+        <div id="subsTools" class="ml-auto"><div class="seg-group seg-sm" role="tablist" aria-label="篩選字幕">
+          <button class="seg" data-filter="all" aria-selected="true">全部 <span id="countAll" class="tnum text-slate-400">0</span></button>
+          <button class="seg" data-filter="edited" aria-selected="false">已修改
+            <span id="countEdited" class="tnum min-w-[18px] h-[18px] px-1 rounded-full text-[11px] leading-[18px] text-center bg-slate-200 text-slate-500">0</span>
+          </button>
+        </div></div>
+
+        <div id="notesTools" class="ml-auto relative hidden">
+          <button id="notesExportBtn" class="btn btn-primary h-7 px-2.5 text-[12.5px]" aria-haspopup="menu" aria-expanded="false">
+            <svg class="w-3.5 h-3.5"><use href="#i-download"/></svg>匯出修改文件<svg class="w-3.5 h-3.5 opacity-60"><use href="#i-chev"/></svg>
+          </button>
+          <div id="notesExportMenu" class="hidden fade-in absolute right-0 top-9 w-72 card rounded-xl p-1.5 z-40 shadow-[0_8px_24px_rgba(15,23,42,.08)]" role="menu">
+            <button data-export="txt" class="w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-50 text-left" role="menuitem">
+              <svg class="w-4 h-4 text-slate-500 mt-0.5 shrink-0"><use href="#i-file"/></svg>
+              <span><span class="block text-[13px] font-medium">文字文件 (.txt)</span><span class="block text-[11.5px] text-slate-400">逐條列出，任何電腦都能直接開啟</span></span>
+            </button>
+            <button data-export="csv" class="w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-50 text-left" role="menuitem">
+              <svg class="w-4 h-4 text-slate-500 mt-0.5 shrink-0"><use href="#i-table"/></svg>
+              <span><span class="block text-[13px] font-medium">Excel 表格 (.csv)</span><span class="block text-[11.5px] text-slate-400">方便剪輯同仁逐項勾選追蹤</span></span>
+            </button>
+            <div class="h-px bg-[#E2E8F0] my-1"></div>
+            <button data-export="copy" class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-50 text-left text-[13px]" role="menuitem">
+              <svg class="w-4 h-4 text-slate-500"><use href="#i-copy"/></svg>複製文字（貼到 Email 或 LINE）
+            </button>
+            <label class="flex items-center gap-2 px-2.5 pt-2 pb-1.5 text-[12px] text-slate-500 cursor-pointer select-none">
+              <input id="includeSubs" type="checkbox" checked class="accent-[#2563EB]">文件中附上字幕修改摘要
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- 字幕分頁 -->
+      <div id="subsPane" class="flex-1 flex flex-col min-h-0">
+        <div id="cueList" class="flex-1 overflow-y-auto max-h-[70vh] lg:max-h-none"></div>
+        <div class="min-h-[44px] px-3 py-1.5 border-t border-[#E2E8F0] flex items-center text-[11.5px] text-slate-400 shrink-0 gap-1.5">
+          <svg class="w-3.5 h-3.5 shrink-0"><use href="#i-lock"/></svg>
+          <span class="mr-auto">原有字幕的時間碼不可修改</span>
+          <button id="addCueBtn" class="btn btn-ghost h-8 px-3 text-[12.5px]" title="在目前播放位置新增一句字幕（快捷鍵 A）">
+            <svg class="w-3.5 h-3.5"><use href="#i-plus"/></svg>在目前位置新增字幕
+          </button>
+        </div>
+      </div>
+
+      <!-- 影片註記分頁 -->
+      <div id="notesPane" class="hidden flex-1 flex flex-col min-h-0">
+        <div class="p-3 border-b border-[#E2E8F0] bg-[#F8FAFC]">
+          <div class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2 text-[12px] text-slate-500">
+            <span>位置</span>
+            <button id="nStartBtn" class="tnum h-6 px-2 rounded-md bg-white border border-[#E2E8F0] text-slate-800 font-medium hover:border-slate-300" title="跳到這個位置">00:00</button>
+            <span id="nEndWrap" class="hidden items-center gap-1.5">
+              <span class="text-slate-400">→</span>
+              <button id="nEndBtn" class="tnum h-6 px-2 rounded-md bg-white border border-[#E2E8F0] text-slate-800 font-medium hover:border-slate-300" title="跳到這個位置">00:00</button>
+              <button id="nEndClear" class="w-5 h-5 grid place-items-center rounded hover:bg-slate-200 text-slate-400" title="移除結束點" aria-label="移除結束點"><svg class="w-3 h-3"><use href="#i-x"/></svg></button>
+            </span>
+            <span id="nLiveTag" class="text-[11.5px] text-slate-400">（跟著播放位置）</span>
+            <span class="ml-auto flex items-center gap-1">
+              <button id="nSetEnd" class="h-6 px-2 rounded-md hover:bg-slate-200/60 text-slate-600" title="把目前播放位置設為這段的結束點">＋ 結束點</button>
+              <button id="nSyncStart" class="h-6 px-2 rounded-md hover:bg-slate-200/60 text-slate-600" title="把起點改成目前播放位置">↻ 用目前位置</button>
+            </span>
+          </div>
+          <div class="bg-white border border-[#E2E8F0] rounded-lg transition-shadow focus-within:border-[#BFDBFE] focus-within:shadow-[0_0_0_3px_rgba(37,99,235,.12)]">
+            <textarea id="nText" rows="2" placeholder="描述要修改的地方，例如：這裡的 Logo 請換成新版" class="block w-full px-3 pt-2.5 pb-1 text-[13.5px] leading-[21px] bg-transparent outline-none resize-none placeholder:text-slate-400"></textarea>
+            <div class="flex flex-wrap items-center gap-1 px-2 pb-2">
+              <div id="catChips" class="flex flex-wrap items-center gap-0.5"></div>
+              <button id="nAdd" class="btn btn-primary ml-auto h-7 px-3 text-[12.5px]">新增註記</button>
+            </div>
+          </div>
+          <p class="mt-1.5 text-[11.5px] text-slate-400"><kbd>Enter</kbd> 新增　<kbd>Shift</kbd>+<kbd>Enter</kbd> 換行　點進輸入框時影片會暫停並記下位置</p>
+        </div>
+        <div id="noteList" class="flex-1 overflow-y-auto max-h-[60vh] lg:max-h-none"></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- 拖曳提示 -->
+<div id="dropOverlay" class="hidden fixed inset-0 z-50 bg-slate-900/20 backdrop-blur-[3px] grid place-items-center">
+  <div class="card rounded-2xl px-10 py-8 text-center fade-in border-dashed border-2 border-[#2563EB]/50 shadow-[0_20px_50px_rgba(15,23,42,.15)]">
+    <div class="w-11 h-11 mx-auto mb-3 rounded-xl bg-blue-50 text-[#2563EB] grid place-items-center">
+      <svg class="w-5 h-5"><use href="#i-swap"/></svg>
+    </div>
+    <p class="text-[16px] font-semibold">放開即可載入</p>
+    <p class="text-[13px] text-slate-500 mt-1">影片 .mp4 / .mov・字幕 .srt・進度檔 .json・YouTube 連結</p>
+  </div>
+</div>
+
+<!-- 確認視窗 -->
+<div id="modal" class="hidden fixed inset-0 z-50 bg-slate-900/30 backdrop-blur-[2px] grid place-items-center p-4">
+  <div class="card rounded-xl max-w-sm w-full p-5 fade-in shadow-[0_20px_50px_rgba(15,23,42,.18)]">
+    <p id="modalTitle" class="text-[14px] font-semibold mb-1">確認操作</p>
+    <p id="modalText" class="text-[13.5px] text-slate-600 leading-relaxed mb-5"></p>
+    <div class="flex justify-end gap-2">
+      <button id="modalCancel" class="btn btn-ghost h-8 px-3.5 text-[13px]">取消</button>
+      <button id="modalOk" class="btn btn-primary h-8 px-3.5 text-[13px]">確定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 設定 -->
+<div id="settingsModal" class="hidden fixed inset-0 z-50 bg-slate-900/30 backdrop-blur-[2px] grid place-items-center p-4">
+  <div class="card rounded-xl max-w-md w-full fade-in shadow-[0_20px_50px_rgba(15,23,42,.18)]" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="h-12 px-5 flex items-center border-b border-[#E2E8F0]">
+      <p id="settingsTitle" class="font-semibold text-[14px]">設定</p>
+      <button id="settingsClose" class="icon-btn ml-auto -mr-2" aria-label="關閉"><svg class="w-4 h-4"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="p-5 space-y-4">
+      <div id="settingsAlert" class="hidden rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[12.5px] px-3 py-2 leading-relaxed"></div>
+      <div>
+        <p class="text-[12.5px] font-medium text-slate-700 mb-1.5">AI 語音辨識服務</p>
+        <div class="seg-group w-full" role="tablist">
+          <button class="seg flex-1 justify-center" data-provider="openai">OpenAI</button>
+          <button class="seg flex-1 justify-center" data-provider="groq">Groq（較快）</button>
+          <button class="seg flex-1 justify-center" data-provider="local">本機（免 Key）</button>
+        </div>
+      </div>
+      <div id="keyBlock">
+        <label for="apiKeyInput" class="block text-[12.5px] font-medium text-slate-700 mb-1.5">API Key 設定</label>
+        <div class="relative">
+          <input id="apiKeyInput" type="password" autocomplete="off" spellcheck="false" class="field pr-16 font-mono" placeholder="sk-…">
+          <button id="toggleKey" type="button" class="absolute right-1 top-1 h-7 px-2.5 rounded-md text-[12px] text-slate-500 hover:bg-slate-100">顯示</button>
+        </div>
+        <p id="keyHelp" class="text-[11.5px] text-slate-400 mt-1.5"></p>
+      </div>
+      <div id="localBlock" class="hidden">
+        <div class="rounded-lg border border-[#E2E8F0] divide-y divide-[#E2E8F0] text-[12.5px]">
+          <div class="flex items-center gap-2 px-3 h-9"><span class="text-slate-500">加速方式</span><span id="devInfo" class="ml-auto font-medium text-slate-700">偵測中…</span></div>
+          <div class="flex items-center gap-2 px-3 h-9"><span class="text-slate-500">模型狀態</span><span id="cacheInfo" class="ml-auto text-slate-700">—</span></div>
+        </div>
+        <p class="text-[11.5px] text-slate-400 mt-1.5 leading-relaxed">第一次使用會從 Hugging Face 下載模型並存在這台電腦的瀏覽器裡，之後不必重新下載。辨識完全在這台電腦上進行，聲音不會傳到任何地方。</p>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label for="modelSelect" class="block text-[12.5px] font-medium text-slate-700 mb-1.5">模型</label>
+          <select id="modelSelect" class="field"></select>
+        </div>
+        <div>
+          <label for="langSelect" class="block text-[12.5px] font-medium text-slate-700 mb-1.5">影片語言</label>
+          <select id="langSelect" class="field">
+            <option value="zh">中文</option>
+            <option value="en">英文</option>
+            <option value="">自動偵測</option>
+          </select>
+        </div>
+      </div>
+      <label class="flex items-start gap-2 text-[13px] text-slate-700 cursor-pointer select-none">
+        <input id="t2twCheck" type="checkbox" class="mt-[3px] accent-[#2563EB]">
+        <span>自動把簡體字轉成繁體字<span class="block text-[11.5px] text-slate-400">Whisper 偶爾會輸出簡體字，勾選後會自動轉換字形（例：发布会 → 發佈會），不會更動用詞</span></span>
+      </label>
+      <div id="privacyNote" class="rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-3 py-2.5 text-[11.5px] text-slate-500 leading-relaxed flex gap-2">
+        <svg class="w-3.5 h-3.5 shrink-0 mt-[2px]"><use href="#i-lock"/></svg>
+        <span>Key 只儲存在這台電腦的瀏覽器（localStorage），不會寫進程式碼。產生字幕時，只有壓縮後的「影片聲音」會傳給所選的服務商。請勿在公用電腦上儲存 Key。</span>
+      </div>
+    </div>
+    <div class="px-5 py-3 border-t border-[#E2E8F0] flex items-center gap-2">
+      <button id="testKeyBtn" class="btn btn-ghost h-8 px-3 text-[13px]">測試連線</button>
+      <span id="testResult" class="text-[12px] min-w-0 truncate"></span>
+      <button id="clearKeyBtn" class="ml-auto text-[12.5px] text-slate-400 hover:text-red-600 px-1 whitespace-nowrap">清除 Key</button>
+      <button id="saveSettingsBtn" class="btn btn-primary h-8 px-3.5 text-[13px]">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI 進度 -->
+<div id="aiModal" class="hidden fixed inset-0 z-50 bg-slate-900/30 backdrop-blur-[2px] grid place-items-center p-4">
+  <div class="card rounded-xl max-w-md w-full p-5 fade-in shadow-[0_20px_50px_rgba(15,23,42,.18)]" role="dialog" aria-modal="true" aria-labelledby="aiTitle">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="w-9 h-9 rounded-lg bg-blue-50 text-[#2563EB] grid place-items-center shrink-0"><svg class="w-[18px] h-[18px]"><use href="#i-spark"/></svg></div>
+      <div class="min-w-0">
+        <p id="aiTitle" class="font-semibold text-[14px]">AI 正在產生字幕</p>
+        <p id="aiSub" class="text-[12px] text-slate-500 truncate">處理期間請保持此頁面開啟</p>
+      </div>
+    </div>
+    <ol id="aiSteps" class="space-y-2.5 text-[13px]"></ol>
+    <div class="mt-4 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div id="aiBar" class="h-full bg-[#2563EB] rounded-full transition-[width] duration-300" style="width:0%"></div></div>
+    <div id="aiError" class="hidden mt-4 rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-[12.5px] text-red-700 leading-relaxed"></div>
+    <div class="mt-5 flex justify-end gap-2">
+      <button id="aiSettingsBtn" class="hidden btn btn-ghost h-8 px-3.5 text-[13px]">開啟設定</button>
+      <button id="aiCancelBtn" class="btn btn-ghost h-8 px-3.5 text-[13px]">取消</button>
+    </div>
+  </div>
+</div>
+
+<div id="toastBox" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- 範例資料 ----------
+  const DEMO_DURATION = 13;
+  const DEMO_SRT = `1
+00:00:00,500 --> 00:00:03,800
+大家好，我是業務部的王小明
+
+2
+00:00:04,200 --> 00:00:08,000
+今天要介紹我們的新產品 X2OO 智慧投影機
+
+3
+00:00:08,500 --> 00:00:12,200
+歡迎聯絡我們安排現場示範
+`;
+
+  // ---------- 狀態 ----------
+  const state = { cues: [], srtName: '範例字幕.srt', activeIdx: -1, lastUserScroll: 0, filter: 'all', rate: 1,
+                  tab: 'subs', notes: [], notesDirty: false, draft: { start: null, end: null, cat: '畫面' } };
+  const CATS = [
+    { name: '畫面', color: '#3B82F6' }, { name: '剪接', color: '#8B5CF6' }, { name: '聲音', color: '#10B981' },
+    { name: '圖卡文字', color: '#F59E0B' }, { name: '其他', color: '#94A3B8' },
+  ];
+  const catColor = (n) => (CATS.find((c) => c.name === n) || CATS[CATS.length - 1]).color;
+  const DEMO_NOTES = [{ start: 5200, end: 7600, cat: '畫面', text: '產品特寫請再放大一點，讓鏡頭的藍光看得更清楚' }];
+  let noteSeq = 0;
+
+  // ---------- DOM ----------
+  const $ = (id) => document.getElementById(id);
+  const video = $('video'), canvas = $('demoCanvas'), ctx = canvas.getContext('2d');
+  const noteList = $('noteList'), nText = $('nText');
+  const cueList = $('cueList'), overlay = $('overlayText'), seekBar = $('seekBar');
+  const playBtn = $('playBtn');
+
+  // ---------- 小工具 ----------
+  function toast(msg, type = 'info', action) {
+    const el = document.createElement('div');
+    const dot = type === 'error' ? '#F87171' : type === 'ok' ? '#34D399' : '#60A5FA';
+    el.className = 'fade-in flex items-center gap-2.5 bg-[#0F172A] text-white pl-3 pr-4 py-2.5 rounded-lg shadow-[0_8px_24px_rgba(15,23,42,.25)] text-[13px]';
+    el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full shrink-0" style="background:${dot}"></span><span></span>`;
+    el.lastChild.textContent = msg;
+    if (action) {
+      const b = document.createElement('button');
+      b.className = 'ml-2 text-[#93C5FD] hover:text-white font-medium';
+      b.textContent = action.label;
+      b.onclick = () => { action.run(); el.remove(); };
+      el.appendChild(b);
+    }
+    $('toastBox').appendChild(el);
+    setTimeout(() => { el.style.transition = 'opacity .3s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, action ? 6000 : 3200);
+  }
+
+  function confirmBox(text, opts = {}) {
+    return new Promise((resolve) => {
+      $('modalTitle').textContent = opts.title || '確認操作';
+      $('modalOk').textContent = opts.ok || '確定';
+      $('modalCancel').textContent = opts.cancel || '取消';
+      $('modalText').textContent = text;
+      $('modal').classList.remove('hidden');
+      const done = (v) => {
+        $('modal').classList.add('hidden');
+        $('modalOk').onclick = $('modalCancel').onclick = null;
+        resolve(v);
+      };
+      $('modalOk').onclick = () => done(true);
+      $('modalCancel').onclick = () => done(false);
+    });
+  }
+
+  function fmtShort(sec) {
+    if (!isFinite(sec) || sec < 0) sec = 0;
+    const s = Math.floor(sec), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+    const mm = String(m).padStart(2, '0'), ss = String(r).padStart(2, '0');
+    return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+  }
+
+  function fmtSrtTime(ms) {
+    ms = Math.max(0, Math.round(ms));
+    const h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60, s = Math.floor(ms / 1000) % 60, x = ms % 1000;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(x).padStart(3, '0')}`;
+  }
+
+  // ---------- SRT 解析／輸出 ----------
+  const TIME_RE = /(\d+):(\d{1,2}):(\d{1,2})[,.](\d{1,3})/;
+  function parseTime(str) {
+    const m = str.match(TIME_RE);
+    if (!m) return null;
+    return ((+m[1] * 60 + +m[2]) * 60 + +m[3]) * 1000 + +m[4].padEnd(3, '0');
+  }
+
+  function parseSRT(text) {
+    text = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+    const blocks = text.split(/\n[ \t]*\n/);
+    const out = [];
+    for (const b of blocks) {
+      const lines = b.replace(/^\n+|\n+$/g, '').split('\n');
+      const ti = lines.findIndex((l) => l.includes('-->'));
+      if (ti < 0) continue;
+      const [a, c] = lines[ti].split('-->');
+      const start = parseTime(a), end = parseTime(c || '');
+      if (start == null || end == null) continue;
+      const extra = (c || '').replace(TIME_RE, '').trim();
+      const settings = extra ? ' ' + extra : ''; // 保留位置設定等附加資訊
+      const body = lines.slice(ti + 1).join('\n').trim();
+      out.push({ start, end, settings, text: body, original: body });
+    }
+    out.sort((x, y) => x.start - y.start);
+    return out;
+  }
+
+  function cleanText(t) {
+    // 字幕內不可出現空白行，否則會破壞 SRT 格式
+    return t.replace(/\r/g, '').split('\n').map((l) => l.trim()).filter(Boolean).join('\n');
+  }
+
+  function buildSRT() {
+    let n = 0, skipped = 0;
+    const parts = [];
+    for (const c of state.cues) {
+      if (c.deleted) continue;
+      const t = cleanText(c.text);
+      if (!t) { skipped++; continue; }
+      n++;
+      parts.push(`${n}\r\n${fmtSrtTime(c.start)} --> ${fmtSrtTime(c.end)}${c.settings}\r\n${t.replace(/\n/g, '\r\n')}\r\n`);
+    }
+    return { srt: parts.join('\r\n'), skipped };
+  }
+
+  async function decodeFile(file) {
+    const buf = await file.arrayBuffer();
+    try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+    catch {
+      try { return new TextDecoder('big5').decode(buf); } // 舊式繁中編碼
+      catch { return new TextDecoder('utf-8').decode(buf); }
+    }
+  }
+
+  // ---------- 播放器（真實影片 / 模擬畫面 共用介面） ----------
+  // YouTube 播放器狀態
+  const yt = { player: null, id: null, ready: false, title: '', state: -1, lastT: 0, lastWall: 0, seekTarget: 0, seekAt: 0, apiPromise: null };
+  function ytTime() {
+    if (!yt.ready) return yt.seekTarget || 0;
+    let t = 0;
+    try { t = yt.player.getCurrentTime() || 0; } catch {}
+    const now = performance.now();
+    if (yt.seekAt && now - yt.seekAt < 900 && Math.abs(t - yt.seekTarget) > 0.3) return yt.seekTarget; // 剛跳轉，等播放器回報
+    if (t !== yt.lastT) { yt.lastT = t; yt.lastWall = now; return t; }
+    if (yt.state === 1) return t + Math.min(0.5, ((now - yt.lastWall) / 1000) * state.rate); // 播放中：補上回報間隔，讓字幕更跟手
+    return t;
+  }
+
+  const player = {
+    mode: 'demo', t: 0, playing: false, last: 0, objectUrl: null,
+    get time() { return this.mode === 'video' ? video.currentTime : this.mode === 'youtube' ? ytTime() : this.t; },
+    get duration() {
+      if (this.mode === 'video') return video.duration || 0;
+      if (this.mode === 'youtube') { try { return yt.ready ? (yt.player.getDuration() || 0) : 0; } catch { return 0; } }
+      return DEMO_DURATION;
+    },
+    get paused() { return this.mode === 'video' ? video.paused : this.mode === 'youtube' ? !(yt.state === 1 || yt.state === 3) : !this.playing; },
+    play() {
+      if (this.mode === 'youtube') { if (yt.ready) { try { yt.player.playVideo(); } catch {} } return; }
+      if (this.mode === 'video') {
+        video.playbackRate = state.rate;
+        video.play().catch(() => toast('影片無法播放，請確認檔案格式', 'error'));
+      } else {
+        if (this.t >= DEMO_DURATION - 0.05) this.t = 0;
+        this.playing = true; this.last = performance.now();
+      }
+    },
+    pause() {
+      if (this.mode === 'youtube') { if (yt.ready) { try { yt.player.pauseVideo(); } catch {} } yt.state = yt.state === 1 || yt.state === 3 ? 2 : yt.state; return; }
+      this.mode === 'video' ? video.pause() : (this.playing = false);
+    },
+    toggle() { this.paused ? this.play() : this.pause(); },
+    seek(sec) {
+      sec = Math.max(0, Math.min(sec, this.duration || sec));
+      if (this.mode === 'youtube') {
+        if (!yt.ready) return;
+        const wasPlaying = yt.state === 1 || yt.state === 3;
+        yt.seekTarget = sec; yt.seekAt = performance.now(); yt.lastT = sec; yt.lastWall = yt.seekAt;
+        try {
+          yt.player.seekTo(sec, true);
+          if (!wasPlaying) yt.player.pauseVideo(); // 尚未開始播放時，seekTo 會自動播放，這裡保持暫停
+        } catch {}
+        return;
+      }
+      if (this.mode === 'video') video.currentTime = sec; else this.t = sec;
+    },
+    setRate(r) {
+      state.rate = r; video.playbackRate = r;
+      if (this.mode === 'youtube' && yt.ready) { try { yt.player.setPlaybackRate(r); } catch {} }
+    },
+  };
+
+  function updateDemoTags() {
+    const vDemo = player.mode === 'demo', sDemo = state.srtName === '範例字幕.srt' && state.isDemoSrt;
+    const tag = $('videoDemoTag');
+    tag.textContent = player.mode === 'youtube' ? 'YouTube' : '範例';
+    tag.className = 'text-[10.5px] px-1.5 rounded ' + (player.mode === 'youtube' ? 'bg-red-50 text-[#E00030]' : 'bg-slate-200/70 text-slate-500');
+    tag.classList.toggle('hidden', !(vDemo || player.mode === 'youtube'));
+    $('srtDemoTag').classList.toggle('hidden', !sDemo);
+    $('demoLine').classList.toggle('hidden', !vDemo || !sDemo);
+  }
+  function setVideoName(name) { $('videoName').textContent = name; $('videoName').title = name; }
+  // 目前影片的名稱（用於檔名與文件）
+  function sourceName() {
+    if (player.mode === 'video' && state.videoFile) return state.videoFile.name.replace(/\.[^.]+$/, '');
+    if (player.mode === 'youtube') return yt.title || `YouTube_${yt.id}`;
+    return '範例影片';
+  }
+  const safeFileName = (n) => n.replace(/[\\/:*?"<>|\n\r]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || '影片';
+  function showVideoError(title, text) {
+    $('videoErrorTitle').textContent = title;
+    $('videoErrorText').textContent = text;
+    $('videoError').classList.remove('hidden');
+  }
+  function destroyYT() {
+    if (yt.player) { try { yt.player.destroy(); } catch {} }
+    yt.player = null; yt.ready = false; yt.id = null; yt.title = ''; yt.state = -1; yt.seekTarget = 0; yt.seekAt = 0;
+    $('ytHost').innerHTML = '';
+    $('ytHost').classList.add('hidden');
+    $('ytNotice').classList.add('hidden');
+  }
+
+  function useDemo() {
+    player.pause();
+    destroyYT();
+    if (player.objectUrl) { URL.revokeObjectURL(player.objectUrl); player.objectUrl = null; }
+    video.removeAttribute('src'); video.load();
+    player.mode = 'demo'; player.t = 0;
+    state.videoFile = null;
+    video.classList.add('hidden'); canvas.classList.remove('hidden');
+    $('videoError').classList.add('hidden');
+    setVideoName('範例影片');
+    renderMarkers();
+    updateDemoTags();
+  }
+
+  function loadVideo(file) {
+    player.pause();
+    destroyYT();
+    if (player.objectUrl) URL.revokeObjectURL(player.objectUrl);
+    player.objectUrl = URL.createObjectURL(file);
+    player.mode = 'video';
+    state.videoFile = file;
+    state.lastSavedBody = null;
+    setSaveStatus('', '本機處理・不上傳');
+    if (state.notes.length && !state.notesDirty) setNotes([]); // 換成自己的影片時，清掉範例註記
+    $('videoError').classList.add('hidden');
+    video.src = player.objectUrl;
+    video.playbackRate = state.rate;
+    video.classList.remove('hidden'); canvas.classList.add('hidden');
+    setVideoName(file.name);
+    updateDemoTags();
+    toast(`已載入影片：${file.name}`, 'ok');
+  }
+
+  video.addEventListener('error', () => {
+    if (player.mode === 'video' && video.getAttribute('src')) {
+      showVideoError('這個影片無法在瀏覽器播放', '部分 .mov 檔使用瀏覽器不支援的編碼。請剪輯同仁匯出成 .mp4（H.264）格式後再試一次。');
+    }
+  });
+  video.addEventListener('loadedmetadata', () => { video.playbackRate = state.rate; renderMarkers(); });
+
+  // =====================================================================
+  //  YouTube 連結
+  // =====================================================================
+  function parseYouTube(text) {
+    text = String(text || '').trim();
+    if (/^[A-Za-z0-9_-]{11}$/.test(text)) return text;
+    let u;
+    try { u = new URL(/^https?:\/\//i.test(text) ? text : 'https://' + text); } catch { return null; }
+    const host = u.hostname.toLowerCase().replace(/^(www|m|music)\./, '');
+    let id = null;
+    if (host === 'youtu.be') id = u.pathname.slice(1).split('/')[0];
+    else if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+      if (u.pathname === '/watch') id = u.searchParams.get('v');
+      else { const m = u.pathname.match(/^\/(?:shorts|embed|live|v)\/([^/?#]+)/); if (m) id = m[1]; }
+    }
+    return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+  }
+
+  function loadYTApi() {
+    if (window.YT && window.YT.Player) return Promise.resolve();
+    if (yt.apiPromise) return yt.apiPromise;
+    yt.apiPromise = new Promise((resolve, reject) => {
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => { try { prev && prev(); } catch {} resolve(); };
+      const el = document.createElement('script');
+      el.src = 'https://www.youtube.com/iframe_api';
+      el.async = true;
+      el.onerror = () => { el.remove(); yt.apiPromise = null; reject(new Error('api')); };
+      document.head.appendChild(el);
+      setTimeout(() => { if (!(window.YT && window.YT.Player)) { yt.apiPromise = null; reject(new Error('timeout')); } }, 12000);
+    });
+    return yt.apiPromise;
+  }
+
+  const YT_ERRORS = {
+    2: ['連結有誤', '找不到這支影片，請確認貼上的是完整的 YouTube 影片連結。'],
+    5: ['這支影片無法在網頁中播放', '請改用「上傳影片檔」，或稍後再試一次。'],
+    100: ['找不到這支影片', '影片可能已被刪除或設為「私人」。若是「不公開」影片，請確認連結完整；私人影片無法在這裡播放。'],
+    101: ['影片擁有者不允許嵌入播放', '這支影片關閉了「允許嵌入」。請到 YouTube Studio →「詳細資訊」→「顯示更多」勾選「允許嵌入」，或改用「上傳影片檔」。'],
+  };
+  YT_ERRORS[150] = YT_ERRORS[101];
+  function fileProtocolMsg() {
+    return 'YouTube 要求嵌入影片的網頁必須有網址，直接雙擊開啟 HTML 檔時無法播放（錯誤 153）。請改用部署後的網址（例如 GitHub Pages）開啟這個工具，或改用「上傳影片檔」。';
+  }
+
+  async function loadYouTube(id, { skipResume = false } = {}) {
+    closeMenu();
+    player.pause();
+    destroyYT();
+    if (player.objectUrl) { URL.revokeObjectURL(player.objectUrl); player.objectUrl = null; }
+    video.removeAttribute('src'); video.load();
+    video.classList.add('hidden'); canvas.classList.add('hidden');
+    $('videoError').classList.add('hidden');
+    player.mode = 'youtube';
+    state.videoFile = null;
+    state.lastSavedBody = null;
+    yt.id = id;
+    setSaveStatus('', '本機處理・不上傳');
+    if (state.notes.length && !state.notesDirty) setNotes([]); // 換成自己的影片時，清掉範例註記
+    $('ytHost').classList.remove('hidden');
+    $('ytInput').value = `https://youtu.be/${id}`;
+    setVideoName('YouTube 影片');
+    updateDemoTags();
+    renderMarkers();
+    if (location.protocol === 'file:') {
+      $('ytNotice').textContent = '提醒：' + fileProtocolMsg();
+      $('ytNotice').classList.remove('hidden');
+    }
+
+    try { await loadYTApi(); }
+    catch {
+      if (yt.id !== id) return false;
+      showVideoError('無法載入 YouTube 播放器', IN_PREVIEW
+        ? '目前的預覽環境禁止嵌入 YouTube。請在部署後的網址（例如 GitHub Pages）或下載的 HTML 檔中使用。'
+        : '請確認網路連線；若在公司網路，可能是防火牆封鎖了 youtube.com，請洽 IT 人員。也可以改用「上傳影片檔」。');
+      return false;
+    }
+    if (yt.id !== id) return false; // 期間又換了別的影片
+
+    const mount = document.createElement('div');
+    $('ytHost').innerHTML = '';
+    $('ytHost').appendChild(mount);
+    const vars = { controls: 0, disablekb: 1, rel: 0, playsinline: 1, iv_load_policy: 3, cc_load_policy: 0, fs: 0, modestbranding: 1 };
+    if (location.origin && location.origin !== 'null' && /^https?:/.test(location.origin)) vars.origin = location.origin;
+    yt.player = new window.YT.Player(mount, {
+      videoId: id, width: '100%', height: '100%', playerVars: vars,
+      events: {
+        onReady: () => {
+          if (yt.id !== id) return;
+          yt.ready = true;
+          try { yt.player.setPlaybackRate(state.rate); } catch {}
+          try { const d = yt.player.getVideoData(); if (d && d.title) { yt.title = d.title; setVideoName(d.title); } } catch {}
+          try { const f = yt.player.getIframe(); f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin'); } catch {}
+          renderMarkers();
+        },
+        onStateChange: (e) => {
+          yt.state = e.data;
+          if (e.data === 1) {
+            $('ytNotice').classList.add('hidden');
+            if (!yt.title) { try { const d = yt.player.getVideoData(); if (d && d.title) { yt.title = d.title; setVideoName(d.title); } } catch {} }
+            renderMarkers();
+          }
+        },
+        onError: (e) => {
+          const code = e.data;
+          const [t, m] = YT_ERRORS[code] ||
+            (code === 152 || code === 153 || location.protocol === 'file:'
+              ? ['需要用網址開啟才能播放 YouTube', fileProtocolMsg()]
+              : ['YouTube 播放器發生錯誤', `錯誤代碼 ${code}。請稍後再試，或改用「上傳影片檔」。`]);
+          showVideoError(t, m);
+        },
+      },
+    });
+    toast('已載入 YouTube 影片', 'ok');
+    if (!skipResume) return offerResume('yt:' + id);
+    return false;
+  }
+
+  $('ytForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const raw = $('ytInput').value.trim();
+    if (!raw) { $('ytInput').focus(); toast('請先貼上 YouTube 影片連結', 'error'); return; }
+    const id = parseYouTube(raw);
+    if (!id) { toast('看不出這是 YouTube 影片連結，請貼上像 https://youtu.be/… 或 https://www.youtube.com/watch?v=… 的網址', 'error'); return; }
+    loadYouTube(id);
+  });
+  // 在頁面上（非輸入框）按 Ctrl+V 貼上 YouTube 連結，直接載入
+  document.addEventListener('paste', (e) => {
+    const el = document.activeElement, tag = (el && el.tagName) || '';
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (el && el.isContentEditable)) return;
+    const text = (e.clipboardData && e.clipboardData.getData('text')) || '';
+    const id = parseYouTube(text);
+    if (!id) return;
+    e.preventDefault();
+    $('demoHint').classList.remove('hidden');
+    loadYouTube(id);
+  });
+  $('ytMenuBtn').addEventListener('click', () => {
+    closeMenu();
+    $('demoHint').classList.remove('hidden');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setTimeout(() => { $('ytInput').focus(); $('ytInput').select(); }, 50);
+  });
+
+  // ---------- 模擬畫面（低飽和放映室風格） ----------
+  function drawDemo(t) {
+    const W = canvas.width, H = canvas.height;
+    ctx.fillStyle = '#09090B'; ctx.fillRect(0, 0, W, H);
+
+    // 柔和中央光暈
+    const rg = ctx.createRadialGradient(W / 2, H / 2 - 30, 40, W / 2, H / 2, W * 0.6);
+    rg.addColorStop(0, 'rgba(63,63,70,.35)'); rg.addColorStop(1, 'rgba(9,9,11,0)');
+    ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+
+    // 點陣格線
+    ctx.fillStyle = 'rgba(255,255,255,.045)';
+    const off = (t * 6) % 40;
+    for (let x = -40 + off; x < W; x += 40) for (let y = 20; y < H; y += 40) ctx.fillRect(x, y, 2, 2);
+
+    // 產品卡片
+    ctx.save();
+    ctx.translate(W / 2, H / 2 - 20 + Math.sin(t * 0.9) * 6);
+    ctx.fillStyle = '#18181B'; ctx.strokeStyle = '#27272A'; ctx.lineWidth = 2;
+    roundRect(-180, -78, 360, 156, 22); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#27272A';
+    ctx.beginPath(); ctx.arc(-95, 0, 46, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#3F3F46';
+    ctx.beginPath(); ctx.arc(-95, 0, 30, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `rgba(37,99,235,${0.35 + Math.sin(t * 2.4) * 0.15})`;
+    ctx.beginPath(); ctx.arc(-95, 0, 14, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = i === 0 ? '#52525B' : '#3F3F46';
+      roundRect(-10, -38 + i * 22, i === 0 ? 150 : 120 - i * 14, 8, 4); ctx.fill();
+    }
+    ctx.restore();
+
+    // 光束掃過
+    const sx = ((t * 160) % (W + 600)) - 300;
+    const lg = ctx.createLinearGradient(sx - 120, 0, sx + 120, 0);
+    lg.addColorStop(0, 'rgba(255,255,255,0)'); lg.addColorStop(.5, 'rgba(255,255,255,.035)'); lg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = lg; ctx.fillRect(0, 0, W, H);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#E4E4E7';
+    ctx.font = '600 38px Inter, "Noto Sans TC", sans-serif';
+    ctx.fillText('範例產品展示', W / 2, 128);
+    ctx.fillStyle = '#71717A';
+    ctx.font = '400 20px Inter, "Noto Sans TC", sans-serif';
+    ctx.fillText('模擬畫面 · 把你的影片拖進頁面即可替換', W / 2, 164);
+
+    ctx.textAlign = 'left';
+    ctx.font = '500 20px Inter, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,.08)';
+    roundRect(W - 132, 28, 100, 36, 8); ctx.fill();
+    ctx.fillStyle = '#A1A1AA';
+    ctx.fillText(fmtShort(t), W - 112, 53);
+  }
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+
+  // ---------- 字幕列表 ----------
+  function setCues(cues, name, isDemo = false, source) {
+    state.cues = cues;
+    state.cuesSource = source || (isDemo ? 'demo' : 'srt');
+    state.srtName = name;
+    state.isDemoSrt = isDemo;
+    state.activeIdx = -1;
+    $('srtName').textContent = name;
+    $('srtName').title = name;
+    renderList();
+    updateDemoTags();
+  }
+
+  function renderList() {
+    cueList.innerHTML = '';
+    if (!state.cues.length) {
+      cueList.innerHTML = '<div class="h-full grid place-items-center text-[13px] text-slate-400 text-center p-8 leading-relaxed">還沒有字幕<br>把 .srt 檔拖進頁面、按「AI 自動生成字幕」，<br>或用下方「新增字幕」逐句輸入</div>';
+      updateStats();
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    state.cues.forEach((c, i) => {
+      const row = document.createElement('div');
+      row.className = 'cue flex gap-3 pl-4 pr-2 py-2 border-b border-slate-100 cursor-pointer';
+      row.dataset.i = i;
+      row.innerHTML = `
+        <div class="w-[52px] shrink-0 pt-[7px] flex flex-col">
+          <button type="button" class="cue-time tnum text-[12px] text-left inline-flex items-center gap-1 hover:text-[#2563EB]" title="從這句開始播放">
+            <span>${fmtShort(c.start / 1000)}</span>
+            <svg class="w-2.5 h-2.5 opacity-0 transition-opacity [.cue:hover_&]:opacity-100"><use href="#i-play"/></svg>
+          </button>
+          <span class="tnum text-[11px] text-slate-300 mt-0.5">#${i + 1}</span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <textarea rows="1" spellcheck="false" class="cue-text block w-full rounded-md px-2 py-[5px] -ml-2 text-[14px] leading-[22px] text-slate-700" aria-label="第 ${i + 1} 句字幕" placeholder="輸入這句字幕…"></textarea>
+          <div class="cue-meta hidden flex-wrap items-center gap-x-2 gap-y-1 mt-0.5 text-[11.5px]">
+            <span class="meta-added hidden items-center gap-1.5 text-emerald-600"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>新增</span>
+            <span class="meta-edited hidden items-center gap-1.5 text-amber-600"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>已修改</span>
+            <span class="meta-deleted hidden items-center gap-1.5 text-red-500"><span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>已刪除，下載時不會包含</span>
+            <span class="meta-empty hidden items-center gap-1.5 text-red-600"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>空白，下載時會略過</span>
+            <span class="meta-timing hidden items-center gap-1.5 text-slate-500">
+              <button type="button" class="time-chip set-start tnum" title="把這句的開始時間設為目前播放位置">起 <b class="font-medium">${fmtPrecise(c.start)}</b> ← 目前位置</button>
+              <button type="button" class="time-chip set-end tnum" title="把這句的結束時間設為目前播放位置">迄 <b class="font-medium">${fmtPrecise(c.end)}</b> ← 目前位置</button>
+            </span>
+            <button type="button" class="btn-restore hidden items-center gap-1 text-slate-400 hover:text-slate-700"><svg class="w-3 h-3"><use href="#i-undo"/></svg>還原原文</button>
+            <button type="button" class="btn-undelete hidden items-center gap-1 text-slate-500 hover:text-slate-800 font-medium"><svg class="w-3 h-3"><use href="#i-undo"/></svg>復原</button>
+          </div>
+        </div>
+        <div class="row-act flex flex-col gap-0.5 shrink-0">
+          <button type="button" class="act-insert icon-btn !w-7 !h-7" title="在這句後面插入新字幕" aria-label="在這句後面插入新字幕"><svg class="w-3.5 h-3.5"><use href="#i-plus"/></svg></button>
+          <button type="button" class="act-delete icon-btn !w-7 !h-7 hover:!text-red-600 hover:!bg-red-50" title="刪除這句" aria-label="刪除這句"><svg class="w-3.5 h-3.5"><use href="#i-trash"/></svg></button>
+        </div>`;
+      row.querySelector('textarea').value = c.text;
+      frag.appendChild(row);
+    });
+    const empty = document.createElement('div');
+    empty.id = 'filterEmpty';
+    empty.className = 'hidden px-6 py-16 text-center';
+    empty.innerHTML = '<p class="text-[13px] font-medium text-slate-600">還沒有修改任何字幕</p><p class="text-[12px] text-slate-400 mt-1">在「全部」中點擊文字即可開始修改</p>';
+    frag.appendChild(empty);
+    cueList.appendChild(frag);
+    cueList.querySelectorAll('.cue').forEach((row) => refreshRow(row));
+    resizeAll(); requestAnimationFrame(resizeAll); setTimeout(resizeAll, 400);
+    updateStats();
+    applyFilter();
+  }
+
+  function autoSize(ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 2 + 'px'; }
+  function resizeAll() { document.querySelectorAll('#cueList textarea, #noteList textarea').forEach((ta) => { if (ta.offsetParent) autoSize(ta); }); }
+  // 字型與樣式載入完成、視窗寬度改變時，重新計算文字框高度
+  window.addEventListener('resize', resizeAll);
+  window.addEventListener('load', resizeAll);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(resizeAll);
+  if ('ResizeObserver' in window) { const ro = new ResizeObserver(resizeAll); ro.observe(cueList); ro.observe(noteList); }
+
+  function refreshRow(row) {
+    const c = state.cues[+row.dataset.i];
+    const deleted = !!c.deleted, added = !!c.added;
+    const edited = !added && !deleted && c.text !== c.original;
+    const typing = row.contains(document.activeElement) && document.activeElement.tagName === 'TEXTAREA';
+    const empty = !deleted && !cleanText(c.text) && !(added && typing);
+    row.classList.toggle('edited', edited || added);
+    row.classList.toggle('empty', empty);
+    row.classList.toggle('deleted', deleted);
+    row.classList.toggle('added', added);
+    const ta = row.querySelector('textarea');
+    ta.readOnly = deleted;
+    if (deleted) ta.value = c.original;
+    const show = (sel, on) => { const el = row.querySelector(sel); el.classList.toggle('hidden', !on); el.classList.toggle('inline-flex', on); };
+    show('.meta-added', added && !empty);
+    show('.meta-edited', edited && !empty);
+    show('.meta-deleted', deleted);
+    show('.meta-empty', empty);
+    show('.meta-timing', added);
+    show('.btn-restore', edited);
+    show('.btn-undelete', deleted);
+    row.querySelector('.act-delete').style.display = deleted ? 'none' : '';
+    const on = edited || added || deleted || empty;
+    const meta = row.querySelector('.cue-meta');
+    meta.classList.toggle('hidden', !on);
+    meta.classList.toggle('flex', on);
+  }
+
+  const isChanged = (c) => !!(c.added || c.deleted || c.text !== c.original);
+  function editedCount() { return state.cues.filter(isChanged).length; }
+  function updateStats() {
+    const n = editedCount();
+    $('countAll').textContent = state.cues.filter((c) => !c.deleted).length;
+    const badge = $('countEdited');
+    badge.textContent = n;
+    badge.className = 'tnum min-w-[18px] h-[18px] px-1 rounded-full text-[11px] leading-[18px] text-center ' +
+      (n ? 'bg-[#2563EB] text-white' : 'bg-slate-200 text-slate-500');
+  }
+
+  // ---------- 篩選（全部／已修改） ----------
+  function applyFilter() {
+    const onlyEdited = state.filter === 'edited';
+    let visible = 0;
+    cueList.querySelectorAll('.cue').forEach((row) => {
+      const c = state.cues[+row.dataset.i];
+      const keep = !onlyEdited || isChanged(c) || row.contains(document.activeElement);
+      row.classList.toggle('hidden', !keep);
+      if (keep) visible++;
+    });
+    const fe = $('filterEmpty');
+    if (fe) fe.classList.toggle('hidden', !(onlyEdited && visible === 0));
+    resizeAll();
+  }
+  document.querySelectorAll('[data-filter]').forEach((b) => b.addEventListener('click', () => {
+    state.filter = b.dataset.filter;
+    document.querySelectorAll('[data-filter]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+    applyFilter();
+    cueList.scrollTop = 0;
+  }));
+
+  // 點擊列表：跳轉
+  cueList.addEventListener('click', (e) => {
+    const row = e.target.closest('.cue');
+    if (!row) return;
+    const i = +row.dataset.i, c = state.cues[i];
+    if (e.target.closest('.btn-restore')) {
+      c.text = c.original;
+      const ta = row.querySelector('textarea');
+      ta.value = c.text; autoSize(ta); refreshRow(row); updateStats();
+      state.activeIdx = -2;
+      if (document.activeElement !== ta) applyFilter();
+      toast('已還原這句原文');
+      return;
+    }
+    if (e.target.closest('.act-delete')) { deleteCue(i); return; }
+    if (e.target.closest('.btn-undelete')) {
+      c.deleted = false; refreshRow(row);
+      const ta = row.querySelector('textarea'); ta.value = c.text; autoSize(ta);
+      updateStats(); state.activeIdx = -2;
+      toast('已復原這句字幕'); return;
+    }
+    if (e.target.closest('.act-insert')) { insertCue(c.end, i); return; }
+    if (e.target.closest('.set-start')) { setCueTime(i, 'start'); return; }
+    if (e.target.closest('.set-end')) { setCueTime(i, 'end'); return; }
+    if (e.target.closest('.cue-time')) { player.seek(c.start / 1000 + 0.001); player.play(); return; }
+    if (e.target.tagName === 'TEXTAREA') return; // 交給 focus 處理
+    player.seek(c.start / 1000 + 0.001);
+  });
+
+  // 開始改字：跳到該句並暫停
+  cueList.addEventListener('focusin', (e) => {
+    if (e.target.tagName !== 'TEXTAREA') return;
+    const c = state.cues[+e.target.closest('.cue').dataset.i];
+    player.pause();
+    const now = player.time * 1000;
+    if (now < c.start || now >= c.end) player.seek(c.start / 1000 + 0.001);
+  });
+  cueList.addEventListener('focusout', (e) => {
+    // 離開文字框後再更新一次狀態（新增句若仍空白，會顯示提醒）
+    if (e.target.tagName !== 'TEXTAREA') return;
+    const row = e.target.closest('.cue');
+    if (state.cues[+row.dataset.i]) refreshRow(row);
+  });
+  cueList.addEventListener('focusout', (e) => {
+    if (e.target.tagName === 'TEXTAREA' && state.filter === 'edited') setTimeout(applyFilter, 0);
+  });
+  cueList.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && e.target.tagName === 'TEXTAREA') e.target.blur();
+  });
+
+  cueList.addEventListener('input', (e) => {
+    if (e.target.tagName !== 'TEXTAREA') return;
+    const row = e.target.closest('.cue');
+    const c = state.cues[+row.dataset.i];
+    if (c.deleted) return;
+    c.text = e.target.value;
+    autoSize(e.target); refreshRow(row); updateStats();
+    state.activeIdx = -2; // 強制更新疊加字幕
+  });
+
+  // 使用者手動捲動時，暫停自動捲動幾秒
+  ['wheel', 'touchmove'].forEach((ev) => cueList.addEventListener(ev, () => { state.lastUserScroll = performance.now(); }, { passive: true }));
+
+  function findActive(ms) {
+    const cs = state.cues;
+    const a = cs[state.activeIdx];
+    if (state.activeIdx >= 0 && a && !a.deleted && ms >= a.start && ms < a.end) return state.activeIdx;
+    for (let i = 0; i < cs.length; i++) {
+      if (ms < cs[i].start) break;
+      if (!cs[i].deleted && ms < cs[i].end) return i;
+    }
+    return -1;
+  }
+
+  // ---------- 新增／刪除字幕 ----------
+  function fmtPrecise(ms) { // 00:12.4
+    const s = Math.max(0, ms) / 1000, m = Math.floor(s / 60), r = s - m * 60;
+    return `${String(m).padStart(2, '0')}:${r.toFixed(1).padStart(4, '0')}`;
+  }
+  const DEFAULT_LEN = 2500, MIN_LEN = 500;
+
+  // 在指定時間（毫秒）新增一句；afterIdx 表示從列表某句的「插入」按鈕呼叫
+  function insertCue(atMs, afterIdx) {
+    player.pause();
+    const live = state.cues.filter((c) => !c.deleted);
+    let start = Math.max(0, Math.round(atMs));
+    if (afterIdx == null) {
+      const cur = live.find((c) => start >= c.start && start < c.end);
+      if (cur) start = cur.end; // 目前位置正在播某句 → 接在那句後面
+    }
+    const next = live.find((c) => c.start >= start + 1);
+    const durMs = (player.duration || 0) * 1000;
+    let end = start + DEFAULT_LEN;
+    if (next) end = Math.min(end, next.start);
+    if (durMs) end = Math.min(end, durMs);
+    let overlap = false;
+    if (end - start < MIN_LEN) { end = start + DEFAULT_LEN; overlap = true; }
+    if (durMs && start >= durMs) { toast('已經是影片結尾，無法再往後新增', 'error'); return; }
+
+    const cue = { start, end, settings: '', text: '', original: '', added: true };
+    let pos = state.cues.findIndex((c) => c.start > start);
+    if (pos < 0) pos = state.cues.length;
+    state.cues.splice(pos, 0, cue);
+    state.activeIdx = -2;
+    if (state.filter === 'edited') { /* 新增的句子屬於「已修改」，維持目前篩選即可 */ }
+    renderList();
+    player.seek(start / 1000 + 0.001);
+    const row = cueList.querySelector(`.cue[data-i="${pos}"]`);
+    if (row) {
+      state.lastUserScroll = performance.now();
+      row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      const ta = row.querySelector('textarea');
+      setTimeout(() => ta.focus(), 50);
+    }
+    if (overlap) toast('這裡前後沒有空檔，新句子會與下一句重疊，可用「起／迄 ← 目前位置」調整時間');
+  }
+
+  function deleteCue(i) {
+    const c = state.cues[i];
+    if (!c) return;
+    if (c.added) {
+      // 自己新增的句子：直接移除，可復原
+      state.cues.splice(i, 1);
+      state.activeIdx = -2;
+      renderList();
+      toast('已刪除新增的字幕', 'info', { label: '復原', run: () => {
+        let pos = state.cues.findIndex((x) => x.start > c.start); if (pos < 0) pos = state.cues.length;
+        state.cues.splice(pos, 0, c); state.activeIdx = -2; renderList();
+      } });
+      return;
+    }
+    // 原有的句子：標記為刪除（列表保留刪除線，下載時排除）
+    if (document.activeElement && cueList.contains(document.activeElement)) document.activeElement.blur();
+    c.deleted = true;
+    state.activeIdx = -2;
+    const row = cueList.querySelector(`.cue[data-i="${i}"]`);
+    if (row) refreshRow(row);
+    updateStats();
+    applyFilter();
+    toast('已刪除這句字幕', 'info', { label: '復原', run: () => {
+      c.deleted = false; state.activeIdx = -2;
+      const r = cueList.querySelector(`.cue[data-i="${state.cues.indexOf(c)}"]`);
+      if (r) { refreshRow(r); r.querySelector('textarea').value = c.text; autoSize(r.querySelector('textarea')); }
+      updateStats(); applyFilter();
+    } });
+  }
+
+  // 只有「新增」的句子可以調整時間，而且只能設為目前播放位置（避免手動輸入打錯）
+  function setCueTime(i, which) {
+    const c = state.cues[i];
+    if (!c || !c.added) return;
+    player.pause();
+    const now = Math.round(player.time * 1000);
+    if (which === 'start') {
+      if (now >= c.end) c.end = now + Math.max(MIN_LEN, Math.min(DEFAULT_LEN, c.end - c.start));
+      c.start = now;
+    } else {
+      if (now - c.start < 200) { toast('結束時間要晚於開始時間：請先播放到這句講完的位置，再按「迄 ← 目前位置」', 'error'); return; }
+      c.end = now;
+    }
+    state.cues.sort((a, b) => a.start - b.start);
+    state.activeIdx = -2;
+    renderList();
+    const row = cueList.querySelector(`.cue[data-i="${state.cues.indexOf(c)}"]`);
+    if (row) row.scrollIntoView({ block: 'nearest' });
+    toast(`已設定${which === 'start' ? '開始' : '結束'}時間 ${fmtPrecise(which === 'start' ? c.start : c.end)}`, 'ok');
+  }
+
+  $('addCueBtn').addEventListener('click', () => {
+    if (state.tab !== 'subs') switchTab('subs');
+    insertCue(player.time * 1000);
+  });
+
+  function setActive(idx) {
+    const forced = state.activeIdx === -2;
+    if (idx === state.activeIdx && !forced) return;
+    const prev = cueList.querySelector('.cue.active');
+    if (prev && +prev.dataset.i !== idx) prev.classList.remove('active');
+    state.activeIdx = idx;
+
+    if (idx >= 0) {
+      const t = cleanText(state.cues[idx].text);
+      overlay.textContent = t;
+      overlay.classList.toggle('hidden', !t);
+      const row = cueList.querySelector(`.cue[data-i="${idx}"]`);
+      if (row && !row.classList.contains('active')) {
+        row.classList.add('active');
+        const typing = cueList.contains(document.activeElement) && document.activeElement.tagName === 'TEXTAREA';
+        if (!forced && !typing && !row.classList.contains('hidden') && performance.now() - state.lastUserScroll > 3000) {
+          const top = row.offsetTop - cueList.clientHeight / 2 + row.offsetHeight / 2;
+          cueList.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+        }
+      }
+    } else {
+      overlay.classList.add('hidden');
+    }
+  }
+
+  // ---------- 控制列 ----------
+  let dragging = false;
+  seekBar.addEventListener('pointerdown', () => { dragging = true; });
+  window.addEventListener('pointerup', () => { dragging = false; });
+  seekBar.addEventListener('input', () => {
+    const d = player.duration;
+    seekBar.style.setProperty('--p', (seekBar.value / 10) + '%');
+    if (d) player.seek((seekBar.value / 1000) * d);
+  });
+
+  playBtn.addEventListener('click', () => player.toggle());
+  $('stage').addEventListener('click', () => player.toggle());
+
+  function jumpCue(dir) {
+    const ms = player.time * 1000, cs = state.cues.filter((c) => !c.deleted);
+    if (!cs.length) return;
+    let target;
+    if (dir > 0) target = cs.find((c) => c.start > ms + 50);
+    else {
+      // 已進入這句超過 0.8 秒 → 回到這句開頭；否則跳到上一句
+      const before = cs.filter((c) => c.start < ms - 800);
+      target = before[before.length - 1] || cs[0];
+    }
+    if (target) player.seek(target.start / 1000 + 0.001);
+  }
+  $('prevBtn').addEventListener('click', () => jumpCue(-1));
+  $('nextBtn').addEventListener('click', () => jumpCue(1));
+  $('replayBtn').addEventListener('click', () => {
+    const ms = player.time * 1000;
+    let i = findActive(ms);
+    if (i < 0) { for (let k = state.cues.length - 1; k >= 0; k--) if (!state.cues[k].deleted && state.cues[k].start <= ms) { i = k; break; } }
+    if (i < 0) i = 0;
+    if (state.cues[i]) { player.seek(state.cues[i].start / 1000 + 0.001); player.play(); }
+  });
+
+  document.querySelectorAll('[data-rate]').forEach((b) => b.addEventListener('click', () => {
+    player.setRate(parseFloat(b.dataset.rate));
+    document.querySelectorAll('[data-rate]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+  }));
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMenu();
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    const typing = ['TEXTAREA', 'INPUT', 'SELECT'].includes(tag);
+    if ((e.key === 'a' || e.key === 'A') && !typing && !e.metaKey && !e.ctrlKey && !e.altKey &&
+        $('settingsModal').classList.contains('hidden') && $('aiModal').classList.contains('hidden')) {
+      e.preventDefault(); switchTab('subs'); insertCue(player.time * 1000); return;
+    }
+    if ((e.key === 'n' || e.key === 'N') && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault(); switchTab('notes'); nText.focus(); return;
+    }
+    if (e.code !== 'Space') return;
+    if (typing || tag === 'BUTTON') return;
+    e.preventDefault(); player.toggle();
+  });
+
+  // ---------- 更換檔案選單 ----------
+  const menu = $('changeMenu'), changeBtn = $('changeBtn');
+  function closeMenu() {
+    menu.classList.add('hidden'); changeBtn.setAttribute('aria-expanded', 'false');
+    $('notesExportMenu').classList.add('hidden'); $('notesExportBtn').setAttribute('aria-expanded', 'false');
+  }
+  changeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = menu.classList.contains('hidden');
+    menu.classList.toggle('hidden', !open);
+    changeBtn.setAttribute('aria-expanded', String(open));
+  });
+  document.addEventListener('click', (e) => {
+    if (menu.contains(e.target) || changeBtn.contains(e.target)) return;
+    if ($('notesExportMenu').contains(e.target) || $('notesExportBtn').contains(e.target)) return;
+    closeMenu();
+  });
+  $('hintClose').addEventListener('click', () => $('demoHint').classList.add('hidden'));
+
+  // ---------- 主迴圈 ----------
+  let lastPaused = null;
+  function loop(now) {
+    if (player.mode === 'demo') {
+      if (player.playing) {
+        player.t += ((now - player.last) / 1000) * state.rate;
+        if (player.t >= DEMO_DURATION) { player.t = DEMO_DURATION; player.playing = false; }
+      }
+      player.last = now;
+      drawDemo(player.t);
+    }
+    const t = player.time, d = player.duration;
+    $('curTime').textContent = fmtShort(t);
+    $('durTime').textContent = fmtShort(d);
+    if (!dragging && d) {
+      seekBar.value = Math.round((t / d) * 1000);
+      seekBar.style.setProperty('--p', ((t / d) * 100).toFixed(2) + '%');
+    }
+    setActive(findActive(t * 1000));
+    updateNotesLive(t * 1000);
+    const p = player.paused;
+    if (p !== lastPaused) {
+      $('playIcon').innerHTML = `<use href="#i-${p ? 'play' : 'pause'}"/>`;
+      $('playIcon').classList.toggle('translate-x-[1px]', p);
+      playBtn.setAttribute('aria-label', p ? '播放' : '暫停');
+      $('bigPlay').style.opacity = p && player.mode !== 'youtube' ? '1' : '0';
+      lastPaused = p;
+    }
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- 載入檔案 ----------
+  function fileKind(f) {
+    const ext = (f.name.split('.').pop() || '').toLowerCase();
+    if (['mp4', 'mov', 'm4v'].includes(ext) || /^video\//.test(f.type)) return 'video';
+    if (ext === 'json') return 'project';
+    if (ext === 'srt') return 'srt';
+    return 'other';
+  }
+  async function handleFiles(files) {
+    closeMenu();
+    // 先處理影片，再處理進度檔，最後才是字幕檔
+    const order = { video: 0, project: 1, srt: 2, other: 3 };
+    const list = [...files].sort((a, b) => order[fileKind(a)] - order[fileKind(b)]);
+    let restored = false;
+    for (const f of list) {
+      const kind = fileKind(f);
+      if (kind === 'video') {
+        loadVideo(f);
+        const fromProject = state.pendingVideoName && state.pendingVideoName === f.name;
+        state.pendingVideoName = null;
+        if (!fromProject && !list.some((x) => fileKind(x) === 'project')) restored = (await offerResume(videoKey(f))) || restored;
+      } else if (kind === 'project') {
+        restored = (await openProject(f)) || restored;
+      } else if (kind === 'srt') {
+        if (restored) { toast(`已套用之前的進度，略過字幕檔「${f.name}」`); continue; }
+        if (editedCount() && !(await confirmBox(`目前有 ${editedCount()} 句修改尚未下載，載入新字幕會清除這些修改。確定要繼續嗎？`))) continue;
+        const cues = parseSRT(await decodeFile(f));
+        if (!cues.length) { toast(`「${f.name}」裡找不到可讀取的字幕`, 'error'); continue; }
+        setCues(cues, f.name);
+        toast(`已載入字幕：${f.name}（${cues.length} 句）`, 'ok');
+      } else {
+        toast(`不支援的檔案：${f.name}（請使用 .mp4、.mov、.srt 或進度檔 .json）`, 'error');
+      }
+    }
+  }
+
+  // =====================================================================
+  //  進度保存：自動暫存（瀏覽器）＋ 進度檔（.json）
+  // =====================================================================
+  const APP_VERSION = '1.2';
+  const SESSION_MAX = 15;
+  const videoKey = (f) => `${f.name}|${f.size}|${f.lastModified}`;
+  function currentKey() {
+    if (player.mode === 'video' && state.videoFile) return videoKey(state.videoFile);
+    if (player.mode === 'youtube' && yt.id) return 'yt:' + yt.id;
+    return null;
+  }
+  function currentVideoInfo() {
+    if (player.mode === 'youtube' && yt.id) return { type: 'youtube', id: yt.id, name: yt.title || 'YouTube 影片', url: `https://youtu.be/${yt.id}` };
+    if (player.mode === 'video' && state.videoFile) return { type: 'file', name: state.videoFile.name, size: state.videoFile.size, lastModified: state.videoFile.lastModified };
+    return null;
+  }
+  function fmtStamp(ts) {
+    const d = new Date(ts), p2 = (n) => String(n).padStart(2, '0');
+    const today = new Date().toDateString() === d.toDateString();
+    return `${today ? '今天' : `${d.getMonth() + 1}/${d.getDate()}`} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+  }
+
+  function snapshotCore() {
+    return {
+      app: 'subtitle-review', format: 1, toolVersion: APP_VERSION,
+      video: currentVideoInfo(),
+      srtName: state.srtName, cuesSource: state.cuesSource || 'srt',
+      cues: state.cues.map((c) => {
+        const o = { start: c.start, end: c.end, text: c.text, original: c.original };
+        if (c.settings) o.settings = c.settings;
+        if (c.added) o.added = true;
+        if (c.deleted) o.deleted = true;
+        return o;
+      }),
+      notes: state.notes.map((n) => ({ start: n.start, end: n.end, cat: n.cat, text: n.text })),
+    };
+  }
+
+  function validSnapshot(snap) {
+    return snap && snap.app === 'subtitle-review' && Array.isArray(snap.cues) && Array.isArray(snap.notes);
+  }
+
+  function applySnapshot(snap) {
+    const cues = snap.cues.map((c) => ({
+      start: Math.max(0, +c.start || 0), end: Math.max(0, +c.end || 0), settings: String(c.settings || ''),
+      text: String(c.text ?? ''), original: String(c.original ?? ''), added: !!c.added, deleted: !!c.deleted,
+    })).sort((a, b) => a.start - b.start);
+    setCues(cues, String(snap.srtName || '字幕.srt'), false, snap.cuesSource === 'ai' ? 'ai' : 'restored');
+    setNotes(snap.notes.map((n) => ({
+      start: Math.max(0, +n.start || 0), end: n.end == null ? null : +n.end,
+      cat: CATS.some((c) => c.name === n.cat) ? n.cat : '其他', text: String(n.text ?? ''),
+    })));
+    state.notesDirty = state.notes.length > 0;
+    state.filter = 'all';
+    document.querySelectorAll('[data-filter]').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.filter === 'all')));
+    applyFilter();
+    state.lastSavedBody = null;
+  }
+
+  function summaryOf(snap) {
+    const changed = snap.cues.filter((c) => c.added || c.deleted || c.text !== c.original).length;
+    const parts = [`字幕 ${snap.cues.filter((c) => !c.deleted).length} 句`];
+    if (changed) parts.push(`已修改 ${changed} 句`);
+    if (snap.notes.length) parts.push(`影片註記 ${snap.notes.length} 則`);
+    return parts.join('、');
+  }
+
+  // ---------- 自動暫存 ----------
+  function sessionIndex() { try { return JSON.parse(LS.get('sessions', '[]')) || []; } catch { return []; } }
+  function writeSession(key, data) {
+    const idx = sessionIndex().filter((x) => x.key !== key);
+    idx.push({ key, savedAt: data.savedAt });
+    while (idx.length > SESSION_MAX) { const old = idx.shift(); LS.del('session.' + old.key); }
+    let ok = LS.set('session.' + key, JSON.stringify(data));
+    while (!ok && idx.length > 1) { // 空間不足：刪掉最舊的再試
+      const old = idx.shift(); LS.del('session.' + old.key);
+      ok = LS.set('session.' + key, JSON.stringify(data));
+    }
+    LS.set('sessions', JSON.stringify(idx));
+    return ok;
+  }
+  function readSession(key) {
+    try { const s = JSON.parse(LS.get('session.' + key, 'null')); return validSnapshot(s) ? s : null; } catch { return null; }
+  }
+  const worthSaving = () => editedCount() > 0 || state.notesDirty || state.cuesSource === 'ai' || state.cuesSource === 'restored';
+
+  function setSaveStatus(kind, text) {
+    const el = $('saveStatus');
+    const icon = kind === 'ok' ? 'i-check' : kind === 'warn' ? 'i-info' : 'i-lock';
+    el.className = 'hidden lg:inline-flex items-center gap-1.5 text-[12px] mr-1 ' + (kind === 'warn' ? 'text-amber-600' : kind === 'ok' ? 'text-emerald-600' : 'text-slate-400');
+    el.innerHTML = `<svg class="w-3.5 h-3.5"><use href="#${icon}"/></svg>`;
+    el.appendChild(document.createTextNode(text));
+  }
+
+  function autosave() {
+    const key = currentKey();
+    if (!key || !worthSaving()) return;
+    const core = snapshotCore();
+    const body = JSON.stringify(core);
+    if (body === state.lastSavedBody) return;
+    const savedAt = Date.now();
+    if (writeSession(key, { ...core, savedAt })) {
+      state.lastSavedBody = body;
+      setSaveStatus('ok', `已自動暫存 ${fmtStamp(savedAt).replace('今天 ', '')}`);
+    } else {
+      setSaveStatus('warn', '無法自動暫存，請按「儲存進度」');
+    }
+  }
+  setInterval(autosave, 1500);
+  const autosaveFresh = () => !!currentKey() && state.lastSavedBody === JSON.stringify(snapshotCore());
+
+  async function offerResume(key) {
+    const snap = readSession(key);
+    if (!snap) return false;
+    const ok = await confirmBox(
+      `找到這支影片上次的進度（${fmtStamp(snap.savedAt)} 自動暫存）：${summaryOf(snap)}。要接續上次的進度嗎？`,
+      { title: '接續上次的進度？', ok: '接續上次進度', cancel: '重新開始' });
+    if (!ok) return false;
+    applySnapshot(snap);
+    state.lastSavedBody = JSON.stringify(snapshotCore());
+    toast('已回到上次的進度', 'ok');
+    return true;
+  }
+
+  // ---------- 進度檔 ----------
+  async function saveProject() {
+    closeMenu();
+    if (!state.cues.length && !state.notes.length) { toast('目前沒有可以儲存的內容', 'error'); return; }
+    const snap = { ...snapshotCore(), savedAt: Date.now() };
+    const base = player.mode === 'demo' ? state.srtName.replace(/\.[^.]+$/, '') : sourceName();
+    await saveFile(`${safeFileName(base)}_審片進度.json`, JSON.stringify(snap, null, 1));
+  }
+  $('saveProjBtn').addEventListener('click', saveProject);
+  $('saveProjMenuBtn').addEventListener('click', saveProject);
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 's' || e.key === 'S')) { e.preventDefault(); saveProject(); }
+  });
+
+  async function openProject(file) {
+    let snap;
+    try { snap = JSON.parse(await file.text()); } catch { snap = null; }
+    if (!validSnapshot(snap)) { toast(`「${file.name}」不是這個工具的進度檔`, 'error'); return false; }
+    if ((editedCount() || state.notesDirty) && !state.isDemoSrt &&
+        !(await confirmBox(`開啟進度檔會取代目前的字幕與註記（${summaryOf(snapshotCore())}），確定嗎？`))) return false;
+    const v = snap.video;
+    // YouTube 進度檔：直接載入對應的 YouTube 影片
+    if (v && v.type === 'youtube' && /^[A-Za-z0-9_-]{11}$/.test(v.id || '')) {
+      if (!(player.mode === 'youtube' && yt.id === v.id)) await loadYouTube(v.id, { skipResume: true });
+      applySnapshot(snap);
+      if (v.name && !yt.title) setVideoName(v.name);
+      switchTab('subs');
+      toast(`已開啟進度並載入 YouTube 影片：${summaryOf(snap)}`, 'ok');
+      return true;
+    }
+    const cur = currentVideoInfo();
+    const mismatch = v && cur && (cur.type !== 'file' || v.name !== cur.name || v.size !== cur.size);
+    if (mismatch) {
+      const go = await confirmBox(`這個進度檔是給影片「${v.name}」的，但目前載入的是「${cur.name}」。時間可能對不上，仍要套用嗎？`,
+        { title: '影片不一致', ok: '仍要套用', cancel: '取消' });
+      if (!go) return false;
+    }
+    applySnapshot(snap);
+    switchTab('subs');
+    if (v && !cur) {
+      state.pendingVideoName = v.name;
+      toast(`已開啟進度（${summaryOf(snap)}）。請把影片「${v.name}」拖進來`, 'ok');
+    } else {
+      toast(`已開啟進度：${summaryOf(snap)}`, 'ok');
+    }
+    return true;
+  }
+
+  ['videoInput', 'srtInput', 'videoInput2', 'srtInput2', 'projInput'].forEach((id) =>
+    $(id).addEventListener('change', (e) => { handleFiles([...e.target.files]); e.target.value = ''; }));
+
+  $('demoBtn').addEventListener('click', async () => {
+    closeMenu();
+    if ((editedCount() || state.notesDirty) && !(await confirmBox('載入範例會清除目前的字幕修改與影片註記，確定嗎？'))) return;
+    useDemo(); setCues(parseSRT(DEMO_SRT), '範例字幕.srt', true);
+    setNotes(DEMO_NOTES.map((n) => ({ ...n })));
+    setSaveStatus('', '本機處理・不上傳');
+    $('demoHint').classList.remove('hidden');
+    toast('已載入範例，試著把第 2 句的「X2OO」改成「X200」');
+  });
+
+  let dragDepth = 0;
+  const hasFiles = (e) => e.dataTransfer && ([...e.dataTransfer.types].includes('Files') || [...e.dataTransfer.types].includes('text/uri-list'));
+  window.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; $('dropOverlay').classList.remove('hidden'); });
+  window.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) $('dropOverlay').classList.add('hidden'); });
+  window.addEventListener('drop', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); dragDepth = 0; $('dropOverlay').classList.add('hidden');
+    if (!e.dataTransfer.files.length) {
+      const id = parseYouTube(e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain'));
+      if (id) { $('demoHint').classList.remove('hidden'); loadYouTube(id); }
+      else toast('只能拖入影片檔、字幕檔、進度檔或 YouTube 連結', 'error');
+      return;
+    }
+    handleFiles([...e.dataTransfer.files]);
+  });
+
+  // ---------- 下載／複製 ----------
+  let downloads = null;
+  try {
+    if (window.claude && typeof window.claude.use === 'function') {
+      window.claude.use('downloads').then((d) => { downloads = d; }).catch(() => {});
+    }
+  } catch {}
+
+  function exportName() {
+    const base = state.srtName.replace(/\.srt$/i, '');
+    return `${base}_修正版.srt`;
+  }
+
+  async function saveFile(name, data, note = '') {
+    if (downloads) {
+      try {
+        await downloads.save({ filename: name, data });
+        toast(`已下載：${name}${note}`, 'ok');
+      } catch (err) {
+        if (err && err.code === 'declined') return;
+        toast('這裡無法直接下載，請改用「複製」功能', 'error');
+      }
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([data], { type: 'text/plain;charset=utf-8' }));
+    const a = Object.assign(document.createElement('a'), { href: url, download: name });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast(`已下載：${name}${note}`, 'ok');
+  }
+
+  $('exportBtn').addEventListener('click', async () => {
+    if (!state.cues.length) { toast('目前沒有字幕可以下載', 'error'); return; }
+    const { srt, skipped } = buildSRT();
+    await saveFile(exportName(), srt, skipped ? `（略過 ${skipped} 句空白字幕）` : '');
+  });
+
+  $('copyBtn').addEventListener('click', async () => {
+    if (!state.cues.length) { toast('目前沒有字幕可以複製', 'error'); return; }
+    try {
+      await navigator.clipboard.writeText(buildSRT().srt);
+      toast('已複製完整 SRT 內容，可貼到記事本另存為 .srt', 'ok');
+    } catch { toast('瀏覽器不允許複製，請改用下載', 'error'); }
+  });
+
+  window.addEventListener('beforeunload', (e) => {
+    autosave();
+    if ((editedCount() || state.notesDirty) && !autosaveFresh()) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  // ---------- 分頁切換 ----------
+  function switchTab(tab) {
+    state.tab = tab;
+    document.querySelectorAll('[data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+    $('subsPane').classList.toggle('hidden', tab !== 'subs');
+    $('notesPane').classList.toggle('hidden', tab !== 'notes');
+    $('subsTools').classList.toggle('hidden', tab !== 'subs');
+    $('notesTools').classList.toggle('hidden', tab !== 'notes');
+    closeMenu();
+    requestAnimationFrame(resizeAll);
+  }
+  document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+
+  // ---------- 影片註記 ----------
+  function fmtLong(ms) { // HH:MM:SS，給剪輯同仁的文件用
+    const s = Math.floor(Math.max(0, ms) / 1000);
+    return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map((v) => String(v).padStart(2, '0')).join(':');
+  }
+  const sortNotes = () => state.notes.sort((a, b) => a.start - b.start);
+
+  function setNotes(list) {
+    state.notes = list.map((n) => ({ id: ++noteSeq, end: null, ...n }));
+    sortNotes();
+    state.notesDirty = false;
+    resetDraft();
+    renderNotes();
+  }
+
+  // 新增區：類別
+  function renderCatChips() {
+    $('catChips').innerHTML = CATS.map((c) =>
+      `<button type="button" class="cat-chip" data-cat="${c.name}" aria-pressed="${c.name === state.draft.cat}"><span class="cat-dot" style="background:${c.color}"></span>${c.name}</button>`).join('');
+  }
+  $('catChips').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cat]');
+    if (!b) return;
+    state.draft.cat = b.dataset.cat;
+    renderCatChips();
+  });
+
+  function resetDraft() {
+    state.draft.start = null; state.draft.end = null; state.draft.pinned = false;
+    updateDraftUI();
+  }
+  function updateDraftUI() {
+    const d = state.draft, live = d.start == null;
+    $('nStartBtn').textContent = fmtShort((live ? player.time * 1000 : d.start) / 1000);
+    $('nLiveTag').classList.toggle('hidden', !live);
+    const hasEnd = d.end != null;
+    $('nEndWrap').classList.toggle('hidden', !hasEnd);
+    $('nEndWrap').classList.toggle('inline-flex', hasEnd);
+    if (hasEnd) $('nEndBtn').textContent = fmtShort(d.end / 1000);
+    $('nSetEnd').textContent = hasEnd ? '↻ 更新結束點' : '＋ 結束點';
+  }
+  function captureStart() {
+    if (state.draft.start == null) { state.draft.start = Math.round(player.time * 1000); updateDraftUI(); }
+  }
+
+  // 點進輸入框：暫停影片；若還沒開始寫，就把起點更新為目前位置（避免沿用很久以前的時間）
+  nText.addEventListener('focus', () => {
+    player.pause();
+    if (!nText.value.trim() && state.draft.end == null) {
+      state.draft.start = Math.round(player.time * 1000);
+      updateDraftUI();
+    }
+  });
+  nText.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); addNote(); }
+    if (e.key === 'Escape') nText.blur();
+  });
+  $('nSyncStart').addEventListener('click', () => {
+    state.draft.start = Math.round(player.time * 1000);
+    state.draft.pinned = true;
+    if (state.draft.end != null && state.draft.end <= state.draft.start) state.draft.end = null;
+    updateDraftUI();
+  });
+  $('nSetEnd').addEventListener('click', () => {
+    captureStart();
+    const now = Math.round(player.time * 1000), d = state.draft;
+    if (Math.abs(now - d.start) < 300) {
+      toast('起點已記在 ' + fmtShort(d.start / 1000) + '，請播放到這段的結束位置再按「結束點」');
+      return;
+    }
+    if (now < d.start) { d.end = d.start; d.start = now; } else d.end = now;
+    d.pinned = true;
+    updateDraftUI();
+  });
+  $('nEndClear').addEventListener('click', () => { state.draft.end = null; updateDraftUI(); });  $('nStartBtn').addEventListener('click', () => player.seek((state.draft.start ?? player.time * 1000) / 1000));
+  $('nEndBtn').addEventListener('click', () => { if (state.draft.end != null) player.seek(state.draft.end / 1000); });
+  $('nAdd').addEventListener('click', addNote);
+
+  function addNote() {
+    const text = nText.value.trim();
+    if (!text) { toast('請先輸入要修改的內容', 'error'); nText.focus(); return; }
+    const d = state.draft;
+    const start = d.start ?? Math.round(player.time * 1000);
+    const note = { id: ++noteSeq, start, end: d.end, cat: d.cat, text };
+    state.notes.push(note); sortNotes();
+    state.notesDirty = true;
+    nText.value = '';
+    resetDraft();
+    nText.blur();
+    renderNotes(note.id);
+    toast(`已新增註記 ${fmtShort(start / 1000)}`, 'ok');
+  }
+
+  function renderNotes(flashId) {
+    const n = state.notes.length;
+    const badge = $('tabNotesCount');
+    badge.textContent = n;
+    badge.className = 'tnum min-w-[18px] h-[18px] px-1 rounded-full text-[11px] leading-[18px] text-center ' +
+      (n ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-500');
+    noteList.innerHTML = '';
+    if (!n) {
+      noteList.innerHTML = `<div class="px-8 py-16 text-center">
+        <div class="w-10 h-10 mx-auto mb-3 rounded-xl bg-slate-100 text-slate-400 grid place-items-center"><svg class="w-5 h-5"><use href="#i-note"/></svg></div>
+        <p class="text-[13px] font-medium text-slate-600">還沒有影片註記</p>
+        <p class="text-[12px] text-slate-400 mt-1 leading-relaxed">播放影片，看到需要調整的畫面、剪接或聲音時，<br>在上方輸入說明即可，會自動記下時間。</p></div>`;
+      renderMarkers();
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    state.notes.forEach((note, i) => {
+      const row = document.createElement('div');
+      row.className = 'cue note group flex gap-3 pl-4 pr-2 py-2.5 border-b border-slate-100 cursor-pointer';
+      row.dataset.id = note.id;
+      row.innerHTML = `
+        <div class="w-[52px] shrink-0 pt-[3px] flex flex-col">
+          <button type="button" class="cue-time note-time tnum text-[12px] text-left hover:text-[#2563EB]" title="跳到這個位置">${fmtShort(note.start / 1000)}</button>
+          ${note.end != null ? `<span class="tnum text-[11px] text-slate-400">→ ${fmtShort(note.end / 1000)}</span>` : ''}
+          <span class="tnum text-[11px] text-slate-300 mt-0.5">#${i + 1}</span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="relative inline-flex items-center mb-1">
+            <span class="cat-dot absolute left-[7px] pointer-events-none" style="background:${catColor(note.cat)}"></span>
+            <select class="note-cat" aria-label="類別">${CATS.map((c) => `<option ${c.name === note.cat ? 'selected' : ''}>${c.name}</option>`).join('')}</select>
+          </div>
+          <textarea rows="1" spellcheck="false" class="cue-text note-text block w-full rounded-md px-2 py-[5px] -ml-2 text-[14px] leading-[22px] text-slate-700" aria-label="註記 ${i + 1}"></textarea>
+        </div>
+        <button type="button" class="note-del icon-btn opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0" title="刪除註記" aria-label="刪除註記">
+          <svg class="w-4 h-4"><use href="#i-trash"/></svg>
+        </button>`;
+      row.querySelector('textarea').value = note.text;
+      frag.appendChild(row);
+    });
+    noteList.appendChild(frag);
+    resizeAll(); requestAnimationFrame(resizeAll);
+    state.activeNotes = '';
+    renderMarkers();
+    if (flashId != null) {
+      const row = noteList.querySelector(`[data-id="${flashId}"]`);
+      if (row) {
+        row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        row.style.backgroundColor = '#FEF3C7';
+        setTimeout(() => { row.style.transition = 'background-color 1s'; row.style.backgroundColor = ''; }, 400);
+      }
+    }
+  }
+
+  const noteOf = (el) => { const row = el.closest('.note'); return row && state.notes.find((n) => n.id === +row.dataset.id); };
+
+  noteList.addEventListener('click', (e) => {
+    const note = noteOf(e.target);
+    if (!note) return;
+    if (e.target.closest('.note-del')) {
+      const idx = state.notes.indexOf(note);
+      state.notes.splice(idx, 1);
+      state.notesDirty = true;
+      renderNotes();
+      toast('已刪除註記', 'info', { label: '復原', run: () => { state.notes.push(note); sortNotes(); renderNotes(note.id); } });
+      return;
+    }
+    if (e.target.closest('.note-cat') || e.target.tagName === 'TEXTAREA') return;
+    player.seek(note.start / 1000);
+  });
+  noteList.addEventListener('focusin', (e) => {
+    if (e.target.tagName !== 'TEXTAREA') return;
+    const note = noteOf(e.target);
+    note.prev = note.text;
+    player.pause();
+    player.seek(note.start / 1000);
+  });
+  noteList.addEventListener('input', (e) => {
+    if (e.target.tagName !== 'TEXTAREA') return;
+    noteOf(e.target).text = e.target.value;
+    state.notesDirty = true;
+    autoSize(e.target);
+  });
+  noteList.addEventListener('change', (e) => {
+    if (!e.target.classList.contains('note-cat')) return;
+    const note = noteOf(e.target);
+    note.cat = e.target.value;
+    state.notesDirty = true;
+    e.target.previousElementSibling.style.background = catColor(note.cat);
+    renderMarkers();
+  });
+  noteList.addEventListener('keydown', (e) => { if (e.key === 'Escape' && e.target.tagName === 'TEXTAREA') e.target.blur(); });
+  noteList.addEventListener('focusout', (e) => {
+    // 內容被清空的註記，離開時移除
+    if (e.target.tagName !== 'TEXTAREA') return;
+    const note = noteOf(e.target);
+    if (note && !note.text.trim()) {
+      state.notes.splice(state.notes.indexOf(note), 1);
+      setTimeout(() => renderNotes(), 0);
+      toast('內容空白的註記已移除', 'info', { label: '復原', run: () => { note.text = note.prev || '（請補充說明）'; state.notes.push(note); sortNotes(); renderNotes(note.id); } });
+    }
+  });
+
+  // 進度條上的註記標記
+  function renderMarkers() {
+    const box = $('markers'), d = player.duration;
+    box.innerHTML = '';
+    if (!d) return;
+    const pct = (ms) => Math.min(100, Math.max(0, (ms / 1000 / d) * 100));
+    for (const n of state.notes) {
+      if (n.end != null) {
+        const span = document.createElement('div');
+        span.className = 'marker-span';
+        span.style.left = pct(n.start) + '%';
+        span.style.width = (pct(n.end) - pct(n.start)) + '%';
+        box.appendChild(span);
+      }
+      const m = document.createElement('button');
+      m.type = 'button';
+      m.className = 'marker';
+      m.style.left = pct(n.start) + '%';
+      m.style.background = catColor(n.cat);
+      m.title = `${fmtShort(n.start / 1000)}【${n.cat}】${n.text}`;
+      m.setAttribute('aria-label', m.title);
+      m.addEventListener('click', (e) => {
+        e.stopPropagation();
+        player.seek(n.start / 1000);
+        switchTab('notes');
+        const row = noteList.querySelector(`[data-id="${n.id}"]`);
+        if (row) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      });
+      box.appendChild(m);
+    }
+  }
+
+  // 播放中：更新新增區時間、標出目前位置的註記
+  function updateNotesLive(ms) {
+    if (state.draft.start == null && document.activeElement !== nText) $('nStartBtn').textContent = fmtShort(ms / 1000);
+    const active = state.notes.filter((n) => ms >= n.start - 150 && ms < (n.end ?? n.start + 2500)).map((n) => n.id).join(',');
+    if (active === state.activeNotes) return;
+    state.activeNotes = active;
+    const set = new Set(active.split(',').filter(Boolean).map(Number));
+    noteList.querySelectorAll('.note').forEach((row) => row.classList.toggle('active', set.has(+row.dataset.id)));
+  }
+
+  // 匯出影片修改文件
+  function subtitleChanges() {
+    return state.cues.map((c, i) => ({ c, i })).filter(({ c }) => isChanged(c) && !(c.added && c.deleted) && !(c.added && !cleanText(c.text)));
+  }
+  function changeLines({ c }) {
+    if (c.deleted) return { kind: '刪除', lines: [`   刪除：${oneLine(c.original)}`] };
+    if (c.added) return { kind: '新增', lines: [`   新增：${oneLine(c.text)}`] };
+    return { kind: '修改', lines: [`   原：${oneLine(c.original)}`, `   改：${oneLine(c.text)}`] };
+  }
+  function oneLine(t) { return cleanText(t).replace(/\n/g, ' / ') || '（刪除此句）'; }
+
+  function buildNotesTxt() {
+    const L = [];
+    const now = new Date();
+    const stamp = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    L.push('影片修改清單', '==============================');
+    L.push(player.mode === 'youtube' && yt.id ? `影片：${sourceName()}（https://youtu.be/${yt.id}）` : `影片：${$('videoName').textContent}`);
+    L.push(`字幕：${state.srtName}`);
+    L.push(`匯出時間：${stamp}`);
+    L.push(`影片修改：共 ${state.notes.length} 項`);
+    L.push('');
+    state.notes.forEach((n, i) => {
+      const time = n.end != null ? `${fmtLong(n.start)} – ${fmtLong(n.end)}` : fmtLong(n.start);
+      L.push(`${i + 1}. [${time}]【${n.cat}】`);
+      cleanText(n.text).split('\n').forEach((line) => L.push(`   ${line}`));
+      L.push('');
+    });
+    const subs = subtitleChanges();
+    if ($('includeSubs').checked && subs.length) {
+      L.push('------------------------------');
+      L.push(`字幕修改摘要：共 ${subs.length} 句（完整內容請見另附的 .srt 檔）`);
+      L.push('');
+      subs.forEach((x) => {
+        const { kind, lines } = changeLines(x);
+        L.push(`#${x.i + 1} [${fmtLong(x.c.start)}]（${kind}）`);
+        lines.forEach((l) => L.push(l));
+        L.push('');
+      });
+    }
+    return L.join('\r\n');
+  }
+
+  function csvCell(v) { return `"${String(v).replace(/"/g, '""')}"`; }
+  function buildNotesCsv() {
+    const rows = [['編號', '開始時間', '結束時間', '類別', '修改內容', '處理狀態']];
+    state.notes.forEach((n, i) => rows.push([i + 1, fmtLong(n.start), n.end != null ? fmtLong(n.end) : '', n.cat, cleanText(n.text), '']));
+    const subs = subtitleChanges();
+    if ($('includeSubs').checked && subs.length) {
+      subs.forEach((x) => {
+        const { kind, lines } = changeLines(x);
+        rows.push([`字幕#${x.i + 1}`, fmtLong(x.c.start), fmtLong(x.c.end), `字幕${kind}`, lines.map((l) => l.trim()).join('\n'), '']);
+      });
+    }
+    return '\uFEFF' + rows.map((r) => r.map(csvCell).join(',')).join('\r\n'); // 加 BOM，Excel 開啟中文不亂碼
+  }
+
+  function notesBaseName() {
+    return `${safeFileName(sourceName())}_影片修改清單`;
+  }
+
+  $('notesExportBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const m = $('notesExportMenu'), open = m.classList.contains('hidden');
+    closeMenu();
+    m.classList.toggle('hidden', !open);
+    $('notesExportBtn').setAttribute('aria-expanded', String(open));
+  });
+  $('notesExportMenu').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-export]');
+    if (!b) return;
+    const kind = b.dataset.export;
+    if (!state.notes.length && !(subtitleChanges().length && $('includeSubs').checked)) {
+      toast('還沒有任何註記可以匯出', 'error'); closeMenu(); return;
+    }
+    closeMenu();
+    if (kind === 'txt') await saveFile(`${notesBaseName()}.txt`, buildNotesTxt());
+    else if (kind === 'csv') await saveFile(`${notesBaseName()}.csv`, buildNotesCsv());
+    else {
+      try { await navigator.clipboard.writeText(buildNotesTxt()); toast('已複製修改清單，可直接貼到 Email 或 LINE', 'ok'); }
+      catch { toast('瀏覽器不允許複製，請改用下載', 'error'); }
+    }
+  });
+
+  // =====================================================================
+  //  AI 自動生成字幕（OpenAI / Groq Whisper）
+  // =====================================================================
+  const WHISPER_PROMPT = '以下是繁體中文的科技論壇與企業產品介紹內容。';
+  const CHUNK_SEC = 600;          // 每 10 分鐘切一段上傳（約 2.4 MB），遠低於 25 MB 限制
+  const MP3_KBPS = 32;            // 16 kHz 單聲道 32 kbps，語音辨識足夠清楚
+  const LIBS = {
+    lame: ['https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js'],
+    opencc: ['https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/cn2t.js'],
+  };
+  const PROVIDERS = {
+    openai: {
+      name: 'OpenAI', host: 'api.openai.com',
+      url: 'https://api.openai.com/v1/audio/transcriptions', test: 'https://api.openai.com/v1/models',
+      models: [['whisper-1', 'whisper-1']], placeholder: 'sk-…',
+      help: '到 platform.openai.com →「API keys」建立後貼上。',
+    },
+    groq: {
+      name: 'Groq', host: 'api.groq.com',
+      url: 'https://api.groq.com/openai/v1/audio/transcriptions', test: 'https://api.groq.com/openai/v1/models',
+      models: [['whisper-large-v3-turbo', 'large-v3-turbo（快速）'], ['whisper-large-v3', 'large-v3（較準確）']], placeholder: 'gsk_…',
+      help: '到 console.groq.com →「API Keys」建立後貼上。',
+    },
+    local: {
+      name: '本機辨識', local: true,
+      models: [
+        ['onnx-community/whisper-large-v3-turbo', 'large-v3-turbo（最準・約 1 GB）'],
+        ['onnx-community/whisper-small', 'small（平衡・約 300 MB）'],
+        ['onnx-community/whisper-base', 'base（最快・約 100 MB，錯字多）'],
+      ],
+    },
+  };
+  // 本機辨識：Transformers.js（v3 穩定版；v4 的 Whisper 時間碼目前有已知問題）
+  const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js';
+  const MODEL_CACHE = 'transformers-cache';
+  const IN_PREVIEW = /(^|\.)claudeusercontent\.com$/.test(location.hostname);
+
+  // ---------- localStorage（可能被瀏覽器停用，全部包 try/catch） ----------
+  const LS = {
+    get(k, d = '') { try { const v = localStorage.getItem('subtool.' + k); return v === null ? d : v; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem('subtool.' + k, v); return true; } catch { return false; } },
+    del(k) { try { localStorage.removeItem('subtool.' + k); } catch {} },
+  };
+  const settings = {
+    provider: PROVIDERS[LS.get('provider')] ? LS.get('provider') : 'openai',
+    lang: LS.get('lang', 'zh'),
+    t2tw: LS.get('t2tw', '1') === '1',
+  };
+  const keyFor = (p) => LS.get('key.' + p, '');
+  const modelFor = (p) => { const m = LS.get('model.' + p); return PROVIDERS[p].models.some(([v]) => v === m) ? m : PROVIDERS[p].models[0][0]; };
+  const updateKeyDot = () => $('keyDot').classList.toggle('hidden', settings.provider === 'local' || !!keyFor(settings.provider));
+
+  // 偵測預覽環境（例如 Claude Artifact）以安全政策封鎖外部連線
+  let cspBlocked = false;
+  document.addEventListener('securitypolicyviolation', (e) => {
+    if (/openai\.com|groq\.com|huggingface\.co|hf\.co|jsdelivr/.test(e.blockedURI || '')) cspBlocked = true;
+  });
+
+  class FriendlyError extends Error {
+    constructor(msg, opts = {}) { super(msg); this.friendly = true; this.needSettings = !!opts.settings; }
+  }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  async function networkError(p) {
+    await sleep(120); // 等安全政策事件送達
+    if (cspBlocked || IN_PREVIEW) {
+      return new FriendlyError('目前的預覽環境禁止網頁連線到外部 API，所以無法在這裡呼叫 Whisper。請把這個 HTML 檔下載後直接用 Chrome／Edge 開啟，或部署到公司網站後再使用。');
+    }
+    if (!navigator.onLine) return new FriendlyError('目前沒有網路連線，請確認 Wi-Fi 或網路線後再試一次。');
+    return new FriendlyError(`無法連線到 ${PROVIDERS[p].name}（${PROVIDERS[p].host}）。請確認網路是否正常；若在公司網路，可能是防火牆封鎖了這個網址，請洽 IT 人員。`);
+  }
+
+  async function httpError(res, p) {
+    let detail = '';
+    try { const j = await res.json(); detail = (j.error && (j.error.message || j.error)) || ''; } catch {}
+    const name = PROVIDERS[p].name;
+    const map = {
+      400: `送出的音訊無法辨識（${detail || '格式錯誤'}）。請確認影片有正常的聲音。`,
+      401: `${name} 的 API Key 無效或已過期，請到「設定」重新貼上正確的 Key。`,
+      403: `這組 ${name} API Key 沒有使用語音辨識的權限（或所在地區不支援），請確認帳戶設定。`,
+      404: '找不到指定的模型，請到「設定」改選其他模型。',
+      413: '音訊檔仍超過服務商的大小限制，請改用較短的影片。',
+      429: `${name} 回應「用量已達上限或請求太頻繁」。請稍候 1 分鐘再試，或確認帳戶的額度與付款設定。`,
+    };
+    const msg = map[res.status] || (res.status >= 500
+      ? `${name} 服務暫時無法回應（錯誤碼 ${res.status}），請稍後再試。`
+      : `辨識失敗（錯誤碼 ${res.status}）${detail ? '：' + detail : ''}`);
+    return new FriendlyError(msg, { settings: [401, 403, 404].includes(res.status) });
+  }
+
+  // ---------- 動態載入外部元件 ----------
+  const loaded = {};
+  function loadScript(name) {
+    if (loaded[name]) return loaded[name];
+    loaded[name] = (async () => {
+      for (const url of LIBS[name]) {
+        const ok = await new Promise((resolve) => {
+          const el = document.createElement('script');
+          el.src = url; el.async = true;
+          el.onload = () => resolve(true);
+          el.onerror = () => { el.remove(); resolve(false); };
+          document.head.appendChild(el);
+        });
+        if (ok) return true;
+      }
+      loaded[name] = null;
+      throw new FriendlyError('無法載入音訊處理元件，請確認網路連線後再試一次。');
+    })();
+    return loaded[name];
+  }
+
+  // ---------- 設定視窗 ----------
+  const ui = { provider: settings.provider };
+  function fillSettings() {
+    const p = ui.provider, P = PROVIDERS[p];
+    document.querySelectorAll('[data-provider]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.provider === p)));
+    const local = !!P.local;
+    $('keyBlock').classList.toggle('hidden', local);
+    $('localBlock').classList.toggle('hidden', !local);
+    $('privacyNote').classList.toggle('hidden', local);
+    $('testKeyBtn').textContent = local ? '檢查這台電腦' : '測試連線';
+    $('clearKeyBtn').textContent = local ? '清除已下載的模型' : '清除 Key';
+    $('apiKeyInput').value = local ? '' : keyFor(p);
+    $('apiKeyInput').placeholder = P.placeholder || '';
+    $('keyHelp').textContent = P.help || '';
+    $('modelSelect').innerHTML = P.models.map(([v, label]) => `<option value="${v}">${label}</option>`).join('');
+    $('modelSelect').value = modelFor(p);
+    $('langSelect').value = settings.lang;
+    $('t2twCheck').checked = settings.t2tw;
+    $('testResult').textContent = '';
+    if (local) refreshLocalInfo();
+  }
+  function openSettings(alertMsg) {
+    ui.provider = settings.provider;
+    fillSettings();
+    $('settingsAlert').textContent = alertMsg || '';
+    $('settingsAlert').classList.toggle('hidden', !alertMsg);
+    $('settingsModal').classList.remove('hidden');
+    setTimeout(() => $('apiKeyInput').focus(), 50);
+  }
+  const closeSettings = () => $('settingsModal').classList.add('hidden');
+
+  $('settingsBtn').addEventListener('click', () => openSettings());
+  $('settingsClose').addEventListener('click', closeSettings);
+  $('settingsModal').addEventListener('click', (e) => { if (e.target.id === 'settingsModal') closeSettings(); });
+  document.querySelectorAll('[data-provider]').forEach((b) => b.addEventListener('click', () => {
+    // 切換前先把目前輸入的 Key 暫存到對應服務
+    const typed = $('apiKeyInput').value.trim();
+    if (!PROVIDERS[ui.provider].local && typed && typed !== keyFor(ui.provider)) LS.set('key.' + ui.provider, typed);
+    ui.provider = b.dataset.provider;
+    fillSettings();
+  }));
+  $('toggleKey').addEventListener('click', () => {
+    const inp = $('apiKeyInput'), show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    $('toggleKey').textContent = show ? '隱藏' : '顯示';
+  });
+  $('apiKeyInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveSettings(); });
+  $('modelSelect').addEventListener('change', () => { if (PROVIDERS[ui.provider].local) refreshLocalInfo(); });
+
+  function saveSettings() {
+    const p = ui.provider, key = PROVIDERS[p].local ? '' : $('apiKeyInput').value.trim();
+    if (key && /\s/.test(key)) { $('testResult').innerHTML = '<span class="text-red-600">Key 中不應有空白，請重新複製貼上</span>'; return false; }
+    settings.provider = p; settings.lang = $('langSelect').value; settings.t2tw = $('t2twCheck').checked;
+    const ok = LS.set('provider', p) && LS.set('lang', settings.lang) && LS.set('t2tw', settings.t2tw ? '1' : '0') &&
+      LS.set('model.' + p, $('modelSelect').value) &&
+      (PROVIDERS[p].local ? true : key ? LS.set('key.' + p, key) : (LS.del('key.' + p), true));
+    updateKeyDot();
+    closeSettings();
+    const msg = PROVIDERS[p].local ? '已切換為本機辨識（免 Key）' : key ? `已儲存 ${PROVIDERS[p].name} 設定` : '已儲存設定（尚未填寫 API Key）';
+    toast(ok ? msg : '瀏覽器不允許儲存設定（可能是無痕模式），關閉頁面後需重新設定', ok ? 'ok' : 'error');
+    return true;
+  }
+  $('saveSettingsBtn').addEventListener('click', saveSettings);
+  $('clearKeyBtn').addEventListener('click', async () => {
+    if (PROVIDERS[ui.provider].local) {
+      if (!(await confirmBox('確定要刪除這台電腦上已下載的 AI 模型嗎？下次使用本機辨識時會重新下載。'))) return;
+      try { await caches.delete(MODEL_CACHE); } catch {}
+      if (localWorker) { localWorker.terminate(); localWorker = null; }
+      refreshLocalInfo();
+      $('testResult').innerHTML = '<span class="text-slate-500">已清除下載的模型</span>';
+      return;
+    }
+    LS.del('key.' + ui.provider);
+    $('apiKeyInput').value = '';
+    updateKeyDot();
+    $('testResult').innerHTML = '<span class="text-slate-500">已清除這台電腦上的 Key</span>';
+  });
+  $('testKeyBtn').addEventListener('click', async () => {
+    const p = ui.provider, key = $('apiKeyInput').value.trim(), out = $('testResult');
+    if (PROVIDERS[p].local) {
+      out.innerHTML = '<span class="text-slate-500">檢查中…</span>';
+      const dev = await refreshLocalInfo();
+      out.innerHTML = dev.device === 'webgpu'
+        ? '<span class="text-emerald-600">✓ 可以使用顯示卡加速</span>'
+        : '<span class="text-amber-600">沒有顯示卡加速，會用 CPU（較慢）</span>';
+      return;
+    }
+    if (!key) { out.innerHTML = '<span class="text-red-600">請先貼上 API Key</span>'; return; }
+    out.innerHTML = '<span class="text-slate-500">測試中…</span>';
+    try {
+      let res;
+      try { res = await fetch(PROVIDERS[p].test, { headers: { Authorization: `Bearer ${key}` } }); }
+      catch { throw await networkError(p); }
+      if (!res.ok) throw await httpError(res, p);
+      out.innerHTML = '<span class="text-emerald-600">✓ 連線成功，Key 可以使用</span>';
+    } catch (err) {
+      out.textContent = '';
+      $('settingsAlert').textContent = err.message;
+      $('settingsAlert').classList.remove('hidden');
+    }
+  });
+
+  // ---------- 進度視窗 ----------
+  const STEPS_API = ['讀取影片音軌', '壓縮成輕量音訊', 'AI 語音辨識', '整理成字幕'];
+  const STEPS_LOCAL = ['讀取影片音軌', '準備 AI 模型', '本機語音辨識', '整理成字幕'];
+  let STEPS = STEPS_API;
+  function renderSteps(statuses, notes = []) {
+    $('aiSteps').innerHTML = STEPS.map((name, i) => {
+      const st = statuses[i] || 'wait';
+      const icon = st === 'done' ? '<span class="w-5 h-5 rounded-full bg-emerald-50 text-emerald-600 grid place-items-center"><svg class="w-3 h-3"><use href="#i-check"/></svg></span>'
+        : st === 'active' ? '<span class="w-5 h-5 grid place-items-center"><span class="spin"></span></span>'
+        : st === 'error' ? '<span class="w-5 h-5 rounded-full bg-red-50 text-red-600 grid place-items-center"><svg class="w-3 h-3"><use href="#i-x"/></svg></span>'
+        : '<span class="w-5 h-5 grid place-items-center"><span class="w-2 h-2 rounded-full bg-slate-200"></span></span>';
+      const color = st === 'wait' ? 'text-slate-400' : st === 'error' ? 'text-red-700' : 'text-slate-800';
+      return `<li class="flex items-center gap-2.5">${icon}<span class="${color}">${name}</span><span class="ml-auto tnum text-[12px] text-slate-400">${notes[i] || ''}</span></li>`;
+    }).join('');
+  }
+  const aiView = { statuses: [], notes: [] };
+  function setStep(i, status, note) {
+    aiView.statuses[i] = status;
+    if (note !== undefined) aiView.notes[i] = note;
+    renderSteps(aiView.statuses, aiView.notes);
+  }
+  const setBar = (pct) => { $('aiBar').style.width = Math.max(0, Math.min(100, pct)).toFixed(1) + '%'; };
+
+  // ---------- 音訊處理 ----------
+  async function extractMono16k(file, signal) {
+    const buf = await file.arrayBuffer();
+    if (signal.aborted) throw new DOMException('aborted', 'AbortError');
+    const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!Ctx) throw new FriendlyError('這個瀏覽器不支援音訊處理，請改用最新版的 Chrome 或 Edge。');
+    const ctx = new Ctx(1, 16000, 16000); // 解碼時會自動重新取樣為 16 kHz
+    let audio;
+    try { audio = await ctx.decodeAudioData(buf); }
+    catch { throw new FriendlyError('無法從這個影片讀取聲音。可能是影片沒有音軌，或使用了瀏覽器不支援的音訊格式（常見於部分 .mov）。請剪輯同仁匯出成 .mp4 後再試。'); }
+    const n = audio.length, ch = audio.numberOfChannels, mono = new Float32Array(n);
+    for (let c = 0; c < ch; c++) { const d = audio.getChannelData(c); for (let i = 0; i < n; i++) mono[i] += d[i] / ch; }
+    let peak = 0;
+    for (let i = 0; i < n; i += 64) { const v = Math.abs(mono[i]); if (v > peak) peak = v; }
+    if (peak < 0.001) throw new FriendlyError('影片中沒有偵測到聲音，請確認影片是否有人聲或音量是否被關掉。');
+    return { samples: mono, rate: audio.sampleRate };
+  }
+
+  async function encodeMp3(samples, rate, signal, onProgress) {
+    const enc = new window.lamejs.Mp3Encoder(1, rate, MP3_KBPS);
+    const BLOCK = 1152 * 16, parts = [], pcm = new Int16Array(BLOCK);
+    for (let i = 0, k = 0; i < samples.length; i += BLOCK, k++) {
+      if (signal.aborted) throw new DOMException('aborted', 'AbortError');
+      const len = Math.min(BLOCK, samples.length - i);
+      const view = len === BLOCK ? pcm : new Int16Array(len);
+      for (let j = 0; j < len; j++) { let v = samples[i + j]; v = v < -1 ? -1 : v > 1 ? 1 : v; view[j] = v < 0 ? v * 0x8000 : v * 0x7fff; }
+      const out = enc.encodeBuffer(view);
+      if (out.length) parts.push(new Uint8Array(out.buffer, out.byteOffset, out.length).slice());
+      if (k % 12 === 0) { onProgress(i / samples.length); await sleep(0); } // 讓畫面保持流暢
+    }
+    const tail = enc.flush();
+    if (tail.length) parts.push(new Uint8Array(tail.buffer, tail.byteOffset, tail.length).slice());
+    return new Blob(parts, { type: 'audio/mpeg' });
+  }
+
+  async function transcribe(blob, idx, p, signal) {
+    const fd = new FormData();
+    fd.append('file', blob, `audio_${idx + 1}.mp3`);
+    fd.append('model', modelFor(p));
+    fd.append('response_format', 'verbose_json');
+    fd.append('prompt', WHISPER_PROMPT);
+    fd.append('temperature', '0');
+    fd.append('timestamp_granularities[]', 'segment');
+    if (settings.lang) fd.append('language', settings.lang);
+    let res;
+    try {
+      res = await fetch(PROVIDERS[p].url, { method: 'POST', headers: { Authorization: `Bearer ${keyFor(p)}` }, body: fd, signal });
+    } catch (err) {
+      if (err.name === 'AbortError') throw err;
+      throw await networkError(p);
+    }
+    if (!res.ok) throw await httpError(res, p);
+    try { return await res.json(); }
+    catch { throw new FriendlyError('AI 服務回傳的資料格式不正確，請稍後再試。'); }
+  }
+
+  // 把 Whisper 的片段整理成字幕
+  function segmentsToCues(segs, convert) {
+    const cues = [];
+    let lastText = '';
+    for (const s of segs) {
+      let text = (s.text || '').trim();
+      if (!text) continue;
+      if ((s.no_speech_prob || 0) > 0.8) continue;       // 多半是無聲片段的幻覺
+      if (text === lastText) continue;                   // 去除重複輸出
+      lastText = text;
+      if (convert) text = convert(text);
+      cues.push({ start: Math.round(s.start * 1000), end: Math.round(s.end * 1000), settings: '', text, original: text });
+    }
+    cues.sort((a, b) => a.start - b.start);
+    for (let i = 0; i < cues.length; i++) {
+      const c = cues[i], next = cues[i + 1];
+      if (c.end <= c.start) c.end = c.start + 1000;
+      if (next && c.end > next.start) c.end = Math.max(c.start + 200, next.start);
+    }
+    return cues;
+  }
+
+  // ---------- 本機辨識（Transformers.js + Web Worker） ----------
+  async function detectDevice() {
+    try {
+      if (!('gpu' in navigator)) return { device: 'wasm', f16: false };
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) return { device: 'wasm', f16: false };
+      return { device: 'webgpu', f16: adapter.features.has('shader-f16') };
+    } catch { return { device: 'wasm', f16: false }; }
+  }
+  async function isModelCached(model) {
+    try {
+      if (!('caches' in window)) return false;
+      const cache = await caches.open(MODEL_CACHE);
+      const keys = await cache.keys();
+      return keys.some((r) => r.url.includes(model) && /\.onnx/.test(r.url));
+    } catch { return false; }
+  }
+  async function refreshLocalInfo() {
+    $('devInfo').textContent = '偵測中…';
+    const dev = await detectDevice();
+    $('devInfo').innerHTML = dev.device === 'webgpu'
+      ? '<span class="text-emerald-600">顯示卡加速（WebGPU）</span>'
+      : '<span class="text-amber-600">CPU（較慢，建議用 small）</span>';
+    const model = $('modelSelect').value || modelFor('local');
+    const cached = await isModelCached(model);
+    $('cacheInfo').innerHTML = cached ? '<span class="text-emerald-600">已下載，可直接使用</span>' : '<span class="text-slate-500">尚未下載（第一次使用時自動下載）</span>';
+    return dev;
+  }
+  function dtypeFor(model, dev) {
+    if (dev.device === 'webgpu') {
+      const enc = dev.f16 ? 'fp16' : (/large/.test(model) ? 'q4' : 'fp32');
+      return { encoder_model: enc, decoder_model_merged: 'q4' };
+    }
+    return { encoder_model: 'q8', decoder_model_merged: 'q8' };
+  }
+
+  // Worker 程式碼：在背景執行緒載入模型與辨識，畫面不會卡住
+  // 參數 self：在 Worker 裡是 Worker 本身；退回頁面內執行時是模擬的 scope
+  function workerMain(self) {
+    let lib = null, pipe = null, key = '';
+    self.addEventListener('securitypolicyviolation', (e) => self.postMessage({ type: 'csp', uri: e.blockedURI }));
+    self.onmessage = async (e) => {
+      const m = e.data;
+      try {
+        if (m.type === 'load') {
+          if (!lib) {
+            try { lib = await import(m.lib); } catch (err) { self.postMessage({ type: 'error', id: m.id, stage: 'lib', message: String(err && err.message || err) }); return; }
+            lib.env.allowLocalModels = false;
+          }
+          const k = m.model + '|' + m.device + '|' + JSON.stringify(m.dtype);
+          if (k !== key) {
+            if (pipe && pipe.dispose) { try { await pipe.dispose(); } catch (_) {} }
+            pipe = null; key = '';
+            pipe = await lib.pipeline('automatic-speech-recognition', m.model, {
+              device: m.device, dtype: m.dtype,
+              progress_callback: (pr) => {
+                if (pr.status === 'progress' || pr.status === 'done') {
+                  self.postMessage({ type: 'progress', id: m.id, status: pr.status, file: pr.file, loaded: pr.loaded || 0, total: pr.total || 0 });
+                }
+              },
+            });
+            key = k;
+          }
+          self.postMessage({ type: 'loaded', id: m.id });
+        } else if (m.type === 'run') {
+          const opts = { task: 'transcribe', return_timestamps: true, chunk_length_s: 30, stride_length_s: 5 };
+          if (m.language) opts.language = m.language;
+          const out = await pipe(m.audio, opts);
+          self.postMessage({ type: 'result', id: m.id, text: out.text, chunks: out.chunks || [] });
+        }
+      } catch (err) {
+        self.postMessage({ type: 'error', id: m.id, stage: m.type, message: String((err && err.message) || err) });
+      }
+    };
+    self.postMessage({ type: 'ready' });
+  }
+  let localWorker = null, workerSeq = 0;
+  // 某些環境（例如直接雙擊開啟 HTML 檔）不允許背景 Worker，這時改在頁面內執行
+  function makeInlineWorker() {
+    const ls = { message: new Set(), error: new Set() };
+    let dead = false;
+    const scope = {
+      postMessage: (data) => { if (!dead) setTimeout(() => ls.message.forEach((f) => f({ data })), 0); },
+      addEventListener() {}, onmessage: null,
+    };
+    workerMain(scope);
+    return {
+      inline: true,
+      postMessage: (data) => { if (!dead) setTimeout(() => scope.onmessage && scope.onmessage({ data }), 0); },
+      addEventListener: (t, f) => ls[t] && ls[t].add(f),
+      removeEventListener: (t, f) => ls[t] && ls[t].delete(f),
+      terminate() { dead = true; ls.message.clear(); ls.error.clear(); },
+    };
+  }
+  let workerPromise = null;
+  function getWorker() {
+    if (localWorker) return Promise.resolve(localWorker);
+    if (workerPromise) return workerPromise;
+    workerPromise = (async () => {
+      try {
+        const url = URL.createObjectURL(new Blob([`(${workerMain.toString()})(self);`], { type: 'text/javascript' }));
+        const w = new Worker(url, { type: 'module' });
+        const ok = await new Promise((res) => {
+          w.onmessage = (e) => { if (e.data.type === 'ready') res(true); };
+          w.onerror = () => res(false);
+          setTimeout(() => res(false), 5000);
+        });
+        w.onmessage = null; w.onerror = null;
+        if (ok) {
+          w.addEventListener('message', (e) => {
+            if (e.data.type === 'csp' && /huggingface|hf\.co|jsdelivr/.test(e.data.uri || '')) cspBlocked = true;
+          });
+          return w;
+        }
+        w.terminate();
+      } catch {}
+      console.warn('背景 Worker 無法使用，改在頁面內執行本機辨識');
+      return makeInlineWorker();
+    })();
+    return workerPromise.then((w) => { localWorker = w; workerPromise = null; return w; });
+  }
+  // 送出一個工作給 Worker，等它回覆；onProgress 接收下載進度
+  async function workerCall(msg, signal, onProgress, transfer = []) {
+    const w = await getWorker();
+    if (signal.aborted) throw new DOMException('aborted', 'AbortError');
+    if (w.inline) transfer = []; // 頁面內執行不需要轉移記憶體
+    return new Promise((resolve, reject) => {
+      const id = ++workerSeq;
+      const cleanup = () => { w.removeEventListener('message', onMsg); w.removeEventListener('error', onErr); signal.removeEventListener('abort', onAbort); };
+      const onMsg = (e) => {
+        const d = e.data;
+        if (d.id !== id) return;
+        if (d.type === 'progress') { onProgress && onProgress(d); return; }
+        cleanup();
+        if (d.type === 'error') { const err = new Error(d.message); err.stage = d.stage; reject(err); }
+        else resolve(d);
+      };
+      const onErr = (e) => { cleanup(); const err = new Error(e.message || '背景程式發生錯誤'); err.stage = 'worker'; reject(err); };
+      const onAbort = () => { cleanup(); reject(new DOMException('aborted', 'AbortError')); };
+      w.addEventListener('message', onMsg);
+      w.addEventListener('error', onErr);
+      signal.addEventListener('abort', onAbort);
+      w.postMessage({ ...msg, id }, transfer);
+    });
+  }
+
+  async function localError(err) {
+    await sleep(150);
+    const m = String(err.message || err);
+    if (cspBlocked || IN_PREVIEW) return new FriendlyError('目前的預覽環境禁止網頁下載 AI 模型，所以無法在這裡使用本機辨識。請把這個 HTML 檔下載後直接用 Chrome／Edge 開啟，或部署到公司網站後再使用。');
+    if (err.stage === 'lib' || err.stage === 'worker') return new FriendlyError('無法載入本機辨識元件。第一次使用需要連上網路；若在公司網路，可能是防火牆封鎖了 cdn.jsdelivr.net，請洽 IT 人員。也可以到「設定」改用 OpenAI 或 Groq。');
+    if (/fetch|network|Could not locate|404|Failed to load|ERR_/i.test(m)) return new FriendlyError('無法下載 AI 模型（huggingface.co）。第一次使用需要連上網路；若在公司網路，可能是防火牆封鎖了 huggingface.co，請洽 IT 人員。', { settings: true });
+    if (/memory|allocat|OOM|out of/i.test(m)) return new FriendlyError('這台電腦的記憶體不足以載入這個模型。請到「設定」改用 small 或 base 模型，或改用 OpenAI／Groq。', { settings: true });
+    return new FriendlyError(`本機辨識失敗：${m}。可到「設定」改用較小的模型，或改用 OpenAI／Groq。`, { settings: true });
+  }
+
+  // 找安靜的位置切段，避免把一句話切成兩半
+  function splitBlocks(samples, rate, blockSec = 60, searchSec = 5) {
+    const bounds = [0], frame = Math.round(rate * 0.2);
+    let pos = blockSec * rate;
+    while (pos < samples.length - rate * 10) {
+      let best = pos, bestE = Infinity;
+      for (let c = pos - searchSec * rate; c <= pos + searchSec * rate; c += frame) {
+        let e = 0;
+        for (let i = c; i < c + frame; i += 4) e += samples[i] * samples[i];
+        if (e < bestE) { bestE = e; best = c; }
+      }
+      bounds.push(best);
+      pos = best + blockSec * rate;
+    }
+    bounds.push(samples.length);
+    return bounds;
+  }
+
+  async function runLocal(samples, rate, dev, signal, setStepNo) {
+    const model = modelFor('local');
+    const language = settings.lang === 'zh' ? 'chinese' : settings.lang === 'en' ? 'english' : null;
+    const cached = await isModelCached(model);
+
+    // 2. 準備模型（第一次會下載）
+    setStep(1, 'active', cached ? '從這台電腦載入' : '下載中…');
+    const files = {};
+    const onProgress = (d) => {
+      if (!d.file) return;
+      const f = files[d.file] || (files[d.file] = { loaded: 0, total: 0 });
+      if (d.status === 'done') f.loaded = f.total; else { f.loaded = d.loaded; f.total = d.total || f.total; }
+      const loaded = Object.values(files).reduce((a, b) => a + b.loaded, 0);
+      const total = Object.values(files).reduce((a, b) => a + b.total, 0);
+      if (total > 2 * 1048576) {
+        setStep(1, 'active', `${(loaded / 1048576).toFixed(0)} / ${(total / 1048576).toFixed(0)} MB`);
+        setBar(10 + (loaded / total) * 25);
+      }
+    };
+    let device = dev.device;
+    try {
+      await workerCall({ type: 'load', lib: TRANSFORMERS_URL, model, device, dtype: dtypeFor(model, dev) }, signal, onProgress);
+    } catch (err) {
+      if (err.name === 'AbortError') throw err;
+      if (device === 'webgpu' && err.stage === 'load' && !/fetch|network|Could not locate|404/i.test(err.message)) {
+        // 顯示卡載入失敗 → 自動改用 CPU 再試一次
+        console.warn('WebGPU 載入失敗，改用 CPU：', err);
+        toast('顯示卡加速無法使用，已自動改用 CPU（速度較慢）');
+        device = 'wasm';
+        if (localWorker) { localWorker.terminate(); localWorker = null; }
+        try {
+          await workerCall({ type: 'load', lib: TRANSFORMERS_URL, model, device, dtype: dtypeFor(model, { device: 'wasm' }) }, signal, onProgress);
+        } catch (err2) { if (err2.name === 'AbortError') throw err2; throw await localError(err2); }
+      } else throw await localError(err);
+    }
+    setStep(1, 'done', device === 'webgpu' ? '顯示卡加速' : 'CPU'); setBar(35);
+    if (localWorker && localWorker.inline && device !== 'webgpu') {
+      $('aiSub').textContent = '目前以相容模式執行，辨識時畫面可能會短暫停頓，請耐心等候';
+    }
+
+    // 3. 逐段辨識（每段約 1 分鐘，在安靜處切開）
+    setStepNo(2);
+    const bounds = splitBlocks(samples, rate);
+    const total = samples.length, segs = [], t0 = performance.now();
+    setStep(2, 'active', '0%');
+    for (let b = 0; b < bounds.length - 1; b++) {
+      const part = samples.slice(bounds[b], bounds[b + 1]); // 複製一份傳給 Worker
+      let res;
+      try {
+        res = await workerCall({ type: 'run', audio: part, language }, signal, null, [part.buffer]);
+      } catch (err) {
+        if (err.name === 'AbortError') throw err;
+        throw await localError(err);
+      }
+      const offset = bounds[b] / rate, blockEnd = bounds[b + 1] / rate;
+      for (const c of res.chunks) {
+        const [s0, e0] = c.timestamp || [];
+        if (s0 == null) continue;
+        segs.push({ start: offset + s0, end: e0 == null ? blockEnd : Math.min(blockEnd, offset + e0), text: c.text });
+      }
+      if (!res.chunks.length && res.text && res.text.trim()) segs.push({ start: offset, end: blockEnd, text: res.text });
+      const done = bounds[b + 1] / total;
+      const elapsed = (performance.now() - t0) / 1000;
+      const remain = done > 0 ? elapsed / done - elapsed : 0;
+      setStep(2, 'active', `${Math.round(done * 100)}%${b === 0 && bounds.length > 2 ? '' : remain > 5 ? ` · 約剩 ${remain > 90 ? Math.round(remain / 60) + ' 分' : Math.round(remain) + ' 秒'}` : ''}`);
+      setBar(35 + done * 57);
+    }
+    setStep(2, 'done', `${fmtShort(total / rate)} 音訊`);
+    return segs;
+  }
+
+  function openAIError(msg, needSettings, title) {
+    aiView.statuses = []; aiView.notes = [];
+    renderSteps([]); setBar(0);
+    $('aiTitle').textContent = title || '無法使用本機辨識';
+    $('aiSub').textContent = '';
+    $('aiError').textContent = msg;
+    $('aiError').classList.remove('hidden');
+    $('aiSettingsBtn').classList.toggle('hidden', !needSettings);
+    $('aiCancelBtn').textContent = '關閉';
+    $('aiModal').classList.remove('hidden');
+  }
+
+  // ---------- 主流程 ----------
+  let aiController = null;
+  async function runAI() {
+    if (aiController) return;
+    if (player.mode === 'youtube') {
+      openAIError('YouTube 不允許網頁直接取得影片的聲音，所以無法用 AI 聽打 YouTube 連結。可以這樣做：先按「上傳影片檔」載入同一支影片並產生 AI 字幕，再貼回 YouTube 連結校對（字幕會保留）；或請剪輯同仁提供 .srt 字幕檔。', false, 'YouTube 影片無法直接產生 AI 字幕');
+      return;
+    }
+    if (player.mode !== 'video' || !state.videoFile) {
+      toast('請先載入要產生字幕的影片（.mp4 / .mov）', 'error');
+      setTimeout(() => { menu.classList.remove('hidden'); changeBtn.setAttribute('aria-expanded', 'true'); }, 0);
+      return;
+    }
+    const p = settings.provider;
+    if (!PROVIDERS[p].local && !keyFor(p)) {
+      openSettings(`請先貼上 ${PROVIDERS[p].name} 的 API Key，才能使用「AI 自動生成字幕」。Key 只需設定一次。`);
+      return;
+    }
+    if (state.cues.length && !state.isDemoSrt &&
+        !(await confirmBox('AI 產生的字幕會取代目前右側的字幕列表（包含已修改的內容），確定要繼續嗎？'))) return;
+
+    let dev = null;
+    if (PROVIDERS[p].local) {
+      if (IN_PREVIEW) {
+        openAIError('目前的預覽環境禁止網頁下載 AI 模型，所以無法在這裡使用本機辨識。請把這個 HTML 檔下載後直接用 Chrome／Edge 開啟，或部署到公司網站後再使用。');
+        return;
+      }
+      dev = await detectDevice();
+      if (dev.device !== 'webgpu' && /large/.test(modelFor('local')) &&
+          !(await confirmBox('這台電腦沒有可用的顯示卡加速，用 CPU 跑 large 模型會非常久（10 分鐘的影片可能要 30 分鐘以上）。建議到「設定」改用 small 模型，或改用 API。仍要繼續嗎？'))) return;
+    }
+
+    player.pause();
+    aiController = new AbortController();
+    const signal = aiController.signal;
+    aiView.statuses = []; aiView.notes = [];
+    STEPS = PROVIDERS[p].local ? STEPS_LOCAL : STEPS_API;
+    renderSteps([]); setBar(0);
+    $('aiTitle').textContent = 'AI 正在產生字幕';
+    $('aiSub').textContent = `${state.videoFile.name} · 處理期間請保持此頁面開啟`;
+    $('aiError').classList.add('hidden');
+    $('aiSettingsBtn').classList.add('hidden');
+    $('aiCancelBtn').textContent = '取消';
+    $('aiModal').classList.remove('hidden');
+    $('aiBtn').disabled = true; $('aiBtn').classList.add('opacity-60');
+
+    let step = 0;
+    try {
+      // 1. 讀取音軌
+      setStep(0, 'active');
+      const libPromise = PROVIDERS[p].local ? null : loadScript('lame');
+      if (libPromise) libPromise.catch(() => {});
+      const { samples, rate } = await extractMono16k(state.videoFile, signal);
+      const durSec = samples.length / rate;
+      setStep(0, 'done', fmtShort(durSec)); setBar(10);
+
+      let segs;
+      if (PROVIDERS[p].local) {
+        step = 1;
+        segs = await runLocal(samples, rate, dev, signal, (s) => { step = s; });
+      } else {
+
+        // 2. 壓縮（每 10 分鐘一段）
+        step = 1; setStep(1, 'active');
+        await libPromise;
+        const per = CHUNK_SEC * rate, nChunks = Math.ceil(samples.length / per), blobs = [];
+        for (let c = 0; c < nChunks; c++) {
+          const part = samples.subarray(c * per, Math.min(samples.length, (c + 1) * per));
+          blobs.push(await encodeMp3(part, rate, signal, (f) => {
+            const done = (c + f) / nChunks;
+            setStep(1, 'active', Math.round(done * 100) + '%');
+            setBar(10 + done * 20);
+          }));
+        }
+        const fmtSize = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+        const total = blobs.reduce((a, b) => a + b.size, 0);
+        setStep(1, 'done', `${fmtSize(state.videoFile.size)} → ${fmtSize(total)}`); setBar(30);
+
+        // 3. 語音辨識
+        step = 2; setStep(2, 'active', nChunks > 1 ? `0 / ${nChunks}` : '');
+        segs = [];
+        for (let c = 0; c < nChunks; c++) {
+          const json = await transcribe(blobs[c], c, p, signal);
+          const offset = c * CHUNK_SEC;
+          for (const s of json.segments || []) segs.push({ ...s, start: s.start + offset, end: s.end + offset });
+          if (!json.segments && json.text) segs.push({ start: offset, end: offset + (json.duration || CHUNK_SEC), text: json.text });
+          setStep(2, 'active', nChunks > 1 ? `${c + 1} / ${nChunks}` : '');
+          setBar(30 + ((c + 1) / nChunks) * 60);
+        }
+        setStep(2, 'done', nChunks > 1 ? `${nChunks} 段` : '');
+      }
+
+      // 4. 整理字幕
+      step = 3; setStep(3, 'active');
+      let convert = null;
+      if (settings.t2tw) {
+        try { await loadScript('opencc'); convert = window.OpenCC.Converter({ from: 'cn', to: 'tw' }) /* 只轉字形不改用詞，避免「發布會→釋出會」這類誤換 */; }
+        catch { toast('繁體轉換元件載入失敗，已保留 AI 原始輸出', 'error'); }
+      }
+      const cues = segmentsToCues(segs, convert);
+      if (!cues.length) throw new FriendlyError('AI 沒有辨識出任何語音內容，請確認影片中是否有人說話。');
+      setStep(3, 'done', `${cues.length} 句`); setBar(100);
+
+      const base = state.videoFile.name.replace(/\.[^.]+$/, '');
+      setCues(cues, `${base}（AI 字幕）.srt`, false, 'ai');
+      state.filter = 'all';
+      document.querySelectorAll('[data-filter]').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.filter === 'all')));
+      applyFilter();
+      switchTab('subs');
+      await sleep(500);
+      $('aiModal').classList.add('hidden');
+      cueList.scrollTop = 0;
+      player.seek(cues[0].start / 1000 + 0.001);
+      player.play(); // 開始即時同步預覽
+      toast(`AI 已產生 ${cues.length} 句字幕，邊看邊校對吧！`, 'ok');
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        if (localWorker && PROVIDERS[p].local) { localWorker.terminate(); localWorker = null; }
+        $('aiModal').classList.add('hidden');
+        toast('已取消 AI 字幕產生');
+      } else {
+        console.error(err);
+        setStep(step, 'error', '');
+        $('aiTitle').textContent = '字幕產生失敗';
+        $('aiError').textContent = err.friendly ? err.message : `發生未預期的錯誤：${err.message || err}。請重新整理頁面後再試一次。`;
+        $('aiError').classList.remove('hidden');
+        $('aiSettingsBtn').classList.toggle('hidden', !err.needSettings);
+        $('aiCancelBtn').textContent = '關閉';
+      }
+    } finally {
+      aiController = null;
+      $('aiBtn').disabled = false; $('aiBtn').classList.remove('opacity-60');
+    }
+  }
+
+  $('aiBtn').addEventListener('click', runAI);
+  $('aiCancelBtn').addEventListener('click', () => {
+    if (aiController) aiController.abort();
+    else $('aiModal').classList.add('hidden');
+  });
+  $('aiSettingsBtn').addEventListener('click', () => {
+    $('aiModal').classList.add('hidden');
+    openSettings($('aiError').textContent);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSettings(); });
+
+  // ---------- 啟動 ----------
+  updateKeyDot();
+  renderCatChips();
+  setNotes(DEMO_NOTES.map((n) => ({ ...n })));
+  setCues(parseSRT(DEMO_SRT), '範例字幕.srt', true);
+  requestAnimationFrame((t) => { player.last = t; loop(t); });
+})();
+</script>
+</body>
+</html>
