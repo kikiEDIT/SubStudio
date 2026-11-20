@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>字幕自助修改工具</title>
+<title>字幕工作台 SubStudio</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
@@ -158,8 +158,8 @@
       <div class="w-7 h-7 rounded-md bg-[#0F172A] text-white grid place-items-center">
         <svg class="w-4 h-4"><use href="#i-cc"/></svg>
       </div>
-      <span class="font-semibold text-[15px] tracking-tight">字幕審片</span>
-      <span class="tnum text-[11px] text-slate-400 font-medium" title="版本：v1.2（2026-11-20）。收到新版檔案時，請刪除舊檔。">v1.2</span>
+      <span class="font-semibold text-[15px] tracking-tight">字幕工作台 <span class="text-slate-400 font-medium">SubStudio</span></span>
+      <span class="tnum text-[11px] text-slate-400 font-medium" title="版本：v1.3（2026-11-20）。收到新版檔案時，請刪除舊檔。">v1.3</span>
     </div>
     <div class="w-px h-5 bg-[#E2E8F0] mx-1 hidden sm:block"></div>
 
@@ -1484,7 +1484,7 @@
   // =====================================================================
   //  進度保存：自動暫存（瀏覽器）＋ 進度檔（.json）
   // =====================================================================
-  const APP_VERSION = '1.2';
+  const APP_VERSION = '1.3';
   const SESSION_MAX = 15;
   const videoKey = (f) => `${f.name}|${f.size}|${f.lastModified}`;
   function currentKey() {
@@ -2303,21 +2303,339 @@
   const setBar = (pct) => { $('aiBar').style.width = Math.max(0, Math.min(100, pct)).toFixed(1) + '%'; };
 
   // ---------- 音訊處理 ----------
-  async function extractMono16k(file, signal) {
-    const buf = await file.arrayBuffer();
-    if (signal.aborted) throw new DOMException('aborted', 'AbortError');
+  // 讀取影片聲音並轉成 16 kHz 單聲道。
+  // ・小檔案：整個讀進來交給瀏覽器解碼（最通用）
+  // ・大檔案（或整檔讀取失敗）：只解析 MP4/MOV 的索引，挑出「聲音」那部分的位元組來解碼，
+  //   不受 Chrome 單一檔案 2 GB 的讀取上限影響，也省記憶體
+  const STREAM_MIN_BYTES = /[?&]forceStream\b/.test(location.search) ? 0 : 300 * 1048576; // forceStream：測試用
+  const abortErr = () => new DOMException('aborted', 'AbortError');
+  const READ_FAIL_MSG = '無法讀取這個影片檔。常見原因：影片放在記憶卡、隨身碟、手機或網路磁碟上；或在 OneDrive／Google 雲端硬碟中尚未下載到這台電腦；或選取後檔案被移動、改名。請先把影片複製到電腦本機（例如桌面），再重新選擇一次。';
+
+  async function readSlice(file, start, end) {
+    try { return await file.slice(start, end).arrayBuffer(); }
+    catch { throw new FriendlyError(READ_FAIL_MSG); }
+  }
+  async function looksLikeMp4(file) {
+    if (/\.(mp4|mov|m4v|m4a)$/i.test(file.name)) return true;
+    try { const h = new Uint8Array(await file.slice(4, 8).arrayBuffer()); return String.fromCharCode(...h) === 'ftyp'; } catch { return false; }
+  }
+  function checkPeak(mono) {
+    let peak = 0;
+    for (let i = 0; i < mono.length; i += 64) { const v = Math.abs(mono[i]); if (v > peak) peak = v; }
+    if (peak < 0.001) throw new FriendlyError('影片中沒有偵測到聲音，請確認影片是否有人聲或音量是否被關掉。');
+  }
+
+  async function extractMono16k(file, signal, onProgress = () => {}) {
+    const isMp4 = await looksLikeMp4(file);
+    if (isMp4 && file.size >= STREAM_MIN_BYTES) {
+      try { return await extractMp4Audio(file, signal, onProgress); }
+      catch (err) {
+        if (err.name === 'AbortError' || err.friendlyFinal) throw err;
+        if (file.size >= 1.9 * 1073741824) throw err; // 超過 2 GB 沒有其他讀法
+        console.warn('索引解析失敗，改用整檔解碼：', err);
+      }
+    }
+    try {
+      return await extractWhole(file, signal);
+    } catch (err) {
+      if (err.name === 'AbortError') throw err;
+      // 整檔讀取失敗（例如權限、檔案太大）→ 對 MP4/MOV 再試一次只讀聲音的方式
+      if (isMp4 && file.size < STREAM_MIN_BYTES && !err.decodeFailed) {
+        try { return await extractMp4Audio(file, signal, onProgress); } catch (e2) { if (e2.name === 'AbortError' || e2.friendlyFinal) throw e2; }
+      }
+      throw err;
+    }
+  }
+
+  async function extractWhole(file, signal) {
+    let buf;
+    try { buf = await file.arrayBuffer(); }
+    catch { throw new FriendlyError(file.size >= 1.9 * 1073741824 ? '這支影片超過 2 GB，瀏覽器無法一次讀取，而且格式不是 MP4／MOV。請剪輯同仁匯出成 .mp4 後再試。' : READ_FAIL_MSG); }
+    if (signal.aborted) throw abortErr();
     const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     if (!Ctx) throw new FriendlyError('這個瀏覽器不支援音訊處理，請改用最新版的 Chrome 或 Edge。');
     const ctx = new Ctx(1, 16000, 16000); // 解碼時會自動重新取樣為 16 kHz
     let audio;
     try { audio = await ctx.decodeAudioData(buf); }
-    catch { throw new FriendlyError('無法從這個影片讀取聲音。可能是影片沒有音軌，或使用了瀏覽器不支援的音訊格式（常見於部分 .mov）。請剪輯同仁匯出成 .mp4 後再試。'); }
+    catch {
+      const e = new FriendlyError('無法從這個影片讀取聲音。可能是影片沒有音軌，或使用了瀏覽器不支援的音訊格式（常見於部分 .mov）。請剪輯同仁匯出成 .mp4 後再試。');
+      e.decodeFailed = true; throw e;
+    }
     const n = audio.length, ch = audio.numberOfChannels, mono = new Float32Array(n);
     for (let c = 0; c < ch; c++) { const d = audio.getChannelData(c); for (let i = 0; i < n; i++) mono[i] += d[i] / ch; }
-    let peak = 0;
-    for (let i = 0; i < n; i += 64) { const v = Math.abs(mono[i]); if (v > peak) peak = v; }
-    if (peak < 0.001) throw new FriendlyError('影片中沒有偵測到聲音，請確認影片是否有人聲或音量是否被關掉。');
+    checkPeak(mono);
     return { samples: mono, rate: audio.sampleRate };
+  }
+
+  // ---- 迷你 MP4/MOV 索引解析器（只解析找聲音所需的部分） ----
+  const fourcc = (dv, o) => String.fromCharCode(dv.getUint8(o), dv.getUint8(o + 1), dv.getUint8(o + 2), dv.getUint8(o + 3));
+  function readU64(dv, o) { return dv.getUint32(o) * 4294967296 + dv.getUint32(o + 4); }
+
+  async function findMoov(file) {
+    let pos = 0;
+    while (pos + 8 <= file.size) {
+      const dv = new DataView(await readSlice(file, pos, Math.min(file.size, pos + 16)));
+      let size = dv.getUint32(0); const type = fourcc(dv, 4);
+      if (size === 1) size = readU64(dv, 8);
+      else if (size === 0) size = file.size - pos;
+      if (size < 8) break;
+      if (type === 'moov') {
+        if (size > 512 * 1048576) break;
+        return new DataView(await readSlice(file, pos, pos + size));
+      }
+      if (type === 'moof') { const e = new FriendlyError('這支影片是「分段式 MP4」，目前無法直接讀取聲音。請剪輯同仁重新匯出成一般 .mp4 後再試。'); e.friendlyFinal = true; throw e; }
+      pos += size;
+    }
+    throw new Error('moov not found');
+  }
+
+  // 列出某個容器內的子 box
+  function children(dv, start, end) {
+    const out = [];
+    let p = start;
+    while (p + 8 <= end) {
+      let size = dv.getUint32(p); const type = fourcc(dv, p + 4); let hdr = 8;
+      if (size === 1) { size = readU64(dv, p + 8); hdr = 16; } else if (size === 0) size = end - p;
+      if (size < 8 || p + size > end) break;
+      out.push({ type, start: p, end: p + size, body: p + hdr });
+      p += size;
+    }
+    return out;
+  }
+  const child = (dv, box, type) => children(dv, box.body, box.end).find((b) => b.type === type);
+  function findInRange(dv, start, end, type) { // 在一段位元組中找某個 box（用於 stsd 內層的 esds/enda/pcmC）
+    for (let p = start; p + 8 <= end; p++) {
+      if (fourcc(dv, p + 4) === type) { const size = dv.getUint32(p); if (size >= 8 && p + size <= end) return { start: p, end: p + size, body: p + 8 }; }
+    }
+    return null;
+  }
+
+  function parseAudioTrack(dv) {
+    const moov = { start: 0, end: dv.byteLength, body: 8 };
+    for (const trak of children(dv, moov.body, moov.end).filter((b) => b.type === 'trak')) {
+      const mdia = child(dv, trak, 'mdia'); if (!mdia) continue;
+      const hdlr = child(dv, mdia, 'hdlr'); if (!hdlr || fourcc(dv, hdlr.body + 8) !== 'soun') continue;
+      const mdhd = child(dv, mdia, 'mdhd');
+      const timescale = dv.getUint8(mdhd.body) === 1 ? dv.getUint32(mdhd.body + 20) : dv.getUint32(mdhd.body + 12);
+      const stbl = child(dv, child(dv, mdia, 'minf'), 'stbl');
+      const stsd = child(dv, stbl, 'stsd');
+      const e = stsd.body + 8; // 第一個 sample entry
+      const entrySize = dv.getUint32(e), format = fourcc(dv, e + 4), entryEnd = e + entrySize;
+      const ver = dv.getUint16(e + 16);
+      let channels = dv.getUint16(e + 24), bits = dv.getUint16(e + 26), rate = dv.getUint32(e + 32) / 65536;
+      let lpcmFlags = null, bytesPerFrame = 0;
+      if (ver === 1) { bytesPerFrame = dv.getUint32(e + 44); }
+      if (ver === 2) { // QuickTime v2（lpcm 常用）
+        rate = dv.getFloat64(e + 40); channels = dv.getUint32(e + 48); bits = dv.getUint32(e + 56);
+        lpcmFlags = dv.getUint32(e + 60); bytesPerFrame = dv.getUint32(e + 64);
+      }
+      if (!rate) rate = timescale;
+      const enda = findInRange(dv, e + 36, entryEnd, 'enda');
+      const pcmC = findInRange(dv, e + 36, entryEnd, 'pcmC');
+      const esds = findInRange(dv, e + 36, entryEnd, 'esds');
+      // 取樣表
+      const stsc = child(dv, stbl, 'stsc'), stsz = child(dv, stbl, 'stsz') || child(dv, stbl, 'stz2');
+      const stco = child(dv, stbl, 'stco'), co64 = child(dv, stbl, 'co64'), stts = child(dv, stbl, 'stts');
+      if (!stsc || !stsz || !(stco || co64)) continue;
+      const chunkOffsets = [];
+      if (stco) { const n = dv.getUint32(stco.body + 4); for (let i = 0; i < n; i++) chunkOffsets.push(dv.getUint32(stco.body + 8 + i * 4)); }
+      else { const n = dv.getUint32(co64.body + 4); for (let i = 0; i < n; i++) chunkOffsets.push(readU64(dv, co64.body + 8 + i * 8)); }
+      const stscEntries = [];
+      { const n = dv.getUint32(stsc.body + 4); for (let i = 0; i < n; i++) { const o = stsc.body + 8 + i * 12; stscEntries.push([dv.getUint32(o), dv.getUint32(o + 4)]); } }
+      const constSize = dv.getUint32(stsz.body + 4), sampleCount = dv.getUint32(stsz.body + 8);
+      let firstDelta = 0;
+      if (stts && dv.getUint32(stts.body + 4) > 0) firstDelta = dv.getUint32(stts.body + 12);
+      return {
+        format, channels, bits, rate, timescale, ver, lpcmFlags, bytesPerFrame, chunkOffsets, stscEntries,
+        constSize, sampleCount, sizesAt: stsz.type === 'stsz' && constSize === 0 ? stsz.body + 12 : null, firstDelta,
+        littleEndian: enda ? dv.getUint16(enda.body) === 1 : null, pcmC, esds, dv,
+      };
+    }
+    return null;
+  }
+
+  // 每個 chunk 有幾個 sample
+  function samplesPerChunk(t) {
+    const n = t.chunkOffsets.length, out = new Array(n);
+    for (let i = 0; i < t.stscEntries.length; i++) {
+      const [first, spc] = t.stscEntries[i];
+      const next = i + 1 < t.stscEntries.length ? t.stscEntries[i + 1][0] : n + 1;
+      for (let c = first; c < next && c <= n; c++) out[c - 1] = spc;
+    }
+    return out;
+  }
+
+  // 解析 esds → AAC 解碼設定
+  function parseEsds(dv, box) {
+    let p = box.body + 4;
+    const readLen = () => { let len = 0; for (let i = 0; i < 4; i++) { const b = dv.getUint8(p++); len = (len << 7) | (b & 0x7f); if (!(b & 0x80)) break; } return len; };
+    if (dv.getUint8(p++) !== 0x03) return null;
+    readLen(); p += 2; const flags = dv.getUint8(p++);
+    if (flags & 0x80) p += 2;
+    if (flags & 0x40) p += 1 + dv.getUint8(p);
+    if (flags & 0x20) p += 2;
+    if (dv.getUint8(p++) !== 0x04) return null;
+    readLen(); const oti = dv.getUint8(p); p += 13;
+    let dsi = null;
+    if (p < box.end && dv.getUint8(p) === 0x05) { p++; const len = readLen(); dsi = new Uint8Array(dv.buffer, dv.byteOffset + p, len).slice(); }
+    return { oti, dsi };
+  }
+
+  // 串流重新取樣到 16 kHz（區間平均，兼具簡單的抗混疊效果）
+  function makeResampler(inRate) {
+    const ratio = inRate / 16000, out = [];
+    let carry = new Float32Array(0), pos = 0, total = 0;
+    return {
+      push(x) {
+        const buf = new Float32Array(carry.length + x.length);
+        buf.set(carry); buf.set(x, carry.length);
+        const res = [];
+        const half = ratio / 2;
+        while (pos + half < buf.length) {
+          const a = Math.max(0, Math.floor(pos - half)), b = Math.min(buf.length, Math.ceil(pos + half));
+          let sum = 0; for (let i = a; i < b; i++) sum += buf[i];
+          res.push(b > a ? sum / (b - a) : 0);
+          pos += ratio;
+        }
+        if (res.length) { const f = Float32Array.from(res); out.push(f); total += f.length; }
+        const drop = Math.max(0, Math.floor(pos - half) - 1);
+        carry = buf.slice(drop); pos -= drop;
+      },
+      pad(seconds) { if (seconds > 0) { const z = new Float32Array(Math.round(seconds * 16000)); out.push(z); total += z.length; } },
+      result() { const r = new Float32Array(total); let o = 0; for (const c of out) { r.set(c, o); o += c.length; } return r; },
+    };
+  }
+
+  // 把位元組區段合併成連續讀取的區塊（減少讀取次數）
+  function mergeRuns(items, maxBytes = 4 * 1048576) {
+    const runs = [];
+    let cur = null;
+    for (const it of items) {
+      if (cur && it.offset === cur.end && cur.end - cur.start + it.size <= maxBytes) { cur.end += it.size; cur.items.push(it); }
+      else { cur = { start: it.offset, end: it.offset + it.size, items: [it] }; runs.push(cur); }
+    }
+    return runs;
+  }
+
+  async function extractMp4Audio(file, signal, onProgress) {
+    const moov = await findMoov(file);
+    const t = parseAudioTrack(moov);
+    if (!t) { const e = new FriendlyError('這支影片沒有音軌，無法產生字幕。'); e.friendlyFinal = true; throw e; }
+    const spc = samplesPerChunk(t);
+    const resampler = makeResampler(t.rate);
+    const fmt = t.format;
+    const PCM = { sowt: [16, true], twos: [16, false], in24: [24, false], in32: [32, false], fl32: [32, false, true], fl64: [64, false, true], lpcm: [0, false], ipcm: [0, false], fpcm: [0, false, true], raw: [8, true] };
+
+    if (PCM[fmt]) {
+      // ---- PCM：直接讀取數值 ----
+      let [bits, little, isFloat] = PCM[fmt];
+      if (fmt === 'lpcm' && t.lpcmFlags != null) { isFloat = !!(t.lpcmFlags & 1); little = !(t.lpcmFlags & 2); }
+      if ((fmt === 'ipcm' || fmt === 'fpcm') && t.pcmC) { little = !!(t.dv.getUint8(t.pcmC.body + 4) & 1); bits = t.dv.getUint8(t.pcmC.body + 5); }
+      if (t.littleEndian != null) little = t.littleEndian;
+      if (!bits) bits = t.bits || 16;
+      const bps = bits / 8, ch = Math.max(1, t.channels || 1), frame = bps * ch;
+      if (![1, 2, 3, 4, 8].includes(bps)) { const e = new FriendlyError(`不支援這種 PCM 聲音格式（${bits} bit）。請剪輯同仁匯出成 .mp4（AAC 聲音）後再試。`); e.friendlyFinal = true; throw e; }
+      const items = t.chunkOffsets.map((off, i) => ({ offset: off, size: (spc[i] || 0) * frame }));
+      const runs = mergeRuns(items, 8 * 1048576);
+      const totalBytes = items.reduce((a, b) => a + b.size, 0);
+      let done = 0;
+      for (const run of runs) {
+        if (signal.aborted) throw abortErr();
+        const dv = new DataView(await readSlice(file, run.start, run.end));
+        const frames = Math.floor(dv.byteLength / frame), mono = new Float32Array(frames);
+        for (let f = 0; f < frames; f++) {
+          let sum = 0;
+          for (let c = 0; c < ch; c++) {
+            const o = f * frame + c * bps;
+            let v;
+            if (isFloat) v = bps === 4 ? dv.getFloat32(o, little) : dv.getFloat64(o, little);
+            else if (bps === 2) v = dv.getInt16(o, little) / 32768;
+            else if (bps === 3) { const b0 = dv.getUint8(o), b1 = dv.getUint8(o + 1), b2 = dv.getUint8(o + 2); let n = little ? (b2 << 16) | (b1 << 8) | b0 : (b0 << 16) | (b1 << 8) | b2; if (n & 0x800000) n -= 0x1000000; v = n / 8388608; }
+            else if (bps === 4) v = dv.getInt32(o, little) / 2147483648;
+            else v = (dv.getUint8(o) - 128) / 128;
+            sum += v;
+          }
+          mono[f] = sum / ch;
+        }
+        resampler.push(mono);
+        done += run.end - run.start;
+        onProgress(done / totalBytes);
+        await sleep(0);
+      }
+    } else {
+      // ---- 壓縮格式（AAC 等）：用瀏覽器內建的 WebCodecs 解碼 ----
+      if (!('AudioDecoder' in window)) {
+        const e = new FriendlyError('這支影片較大，需要較新的瀏覽器才能讀取聲音。請改用最新版的 Chrome 或 Edge；或請剪輯同仁匯出較小的檔案（例如 1080p、300 MB 以下）再試。'); e.friendlyFinal = true; throw e;
+      }
+      let config;
+      const es = t.esds ? parseEsds(t.dv, t.esds) : null;
+      if (fmt === 'mp4a' && es && (es.oti === 0x40 || es.oti === 0x67 || es.oti === 0x66 || es.oti === 0x68)) {
+        let dsi = es.dsi;
+        let aot = dsi && dsi.length ? dsi[0] >> 3 : 2;
+        if (!dsi || !dsi.length) { // 沒有設定資料時，自行組出 AAC-LC 設定
+          const rates = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
+          const fi = Math.max(0, rates.indexOf(Math.round(t.rate)));
+          dsi = new Uint8Array([(2 << 3) | (fi >> 1), ((fi & 1) << 7) | ((t.channels || 2) << 3)]); aot = 2;
+        }
+        config = { codec: `mp4a.40.${aot === 31 ? 2 : aot}`, sampleRate: Math.round(t.rate), numberOfChannels: t.channels || 2, description: dsi };
+      } else if (fmt === '.mp3' || (fmt === 'mp4a' && es && (es.oti === 0x6b || es.oti === 0x69))) {
+        config = { codec: 'mp3', sampleRate: Math.round(t.rate), numberOfChannels: t.channels || 2 };
+      } else if (fmt === 'Opus') {
+        config = { codec: 'opus', sampleRate: 48000, numberOfChannels: t.channels || 2 };
+      } else if (fmt === 'ac-3' || fmt === 'ec-3') {
+        const e = new FriendlyError('這支影片的聲音是杜比（AC-3）格式，瀏覽器無法解碼。請剪輯同仁匯出成 .mp4（AAC 聲音）後再試。'); e.friendlyFinal = true; throw e;
+      }
+      if (!config) { const e = new FriendlyError(`不支援這支影片的聲音格式（${fmt}）。請剪輯同仁匯出成 .mp4（AAC 聲音）後再試。`); e.friendlyFinal = true; throw e; }
+      let support;
+      try { support = await AudioDecoder.isConfigSupported(config); } catch { support = { supported: false }; }
+      if (!support.supported) { const e = new FriendlyError('這個瀏覽器無法解碼這支影片的聲音格式，請改用最新版的 Chrome 或 Edge。'); e.friendlyFinal = true; throw e; }
+
+      // 逐一列出每個聲音 sample 的位置
+      const items = [];
+      let idx = 0;
+      for (let c = 0; c < t.chunkOffsets.length; c++) {
+        let off = t.chunkOffsets[c];
+        for (let k = 0; k < (spc[c] || 0) && idx < t.sampleCount; k++, idx++) {
+          const size = t.sizesAt != null ? t.dv.getUint32(t.sizesAt + idx * 4) : t.constSize;
+          items.push({ offset: off, size }); off += size;
+        }
+      }
+      let decErr = null, outFrames = 0;
+      const decoder = new AudioDecoder({
+        output: (ad) => {
+          try {
+            const n = ad.numberOfFrames, ch = ad.numberOfChannels, mono = new Float32Array(n), tmp = new Float32Array(n);
+            for (let c = 0; c < ch; c++) { ad.copyTo(tmp, { planeIndex: c, format: 'f32-planar' }); for (let i = 0; i < n; i++) mono[i] += tmp[i] / ch; }
+            resampler.push(mono); outFrames += n;
+          } catch (e) { decErr = e; } finally { ad.close(); }
+        },
+        error: (e) => { decErr = e; },
+      });
+      decoder.configure(config);
+      const dur = t.firstDelta ? Math.round((t.firstDelta / t.timescale) * 1e6) : Math.round((1024 / t.rate) * 1e6);
+      const runs = mergeRuns(items);
+      const totalBytes = items.reduce((a, b) => a + b.size, 0);
+      let done = 0, ts = 0;
+      for (const run of runs) {
+        if (signal.aborted) { try { decoder.close(); } catch {} throw abortErr(); }
+        if (decErr) break;
+        const buf = await readSlice(file, run.start, run.end);
+        for (const it of run.items) {
+          decoder.decode(new EncodedAudioChunk({ type: 'key', timestamp: ts, duration: dur, data: new Uint8Array(buf, it.offset - run.start, it.size) }));
+          ts += dur;
+        }
+        if (decoder.decodeQueueSize > 400) await decoder.flush();
+        done += run.end - run.start;
+        onProgress(done / totalBytes);
+        await sleep(0);
+      }
+      if (!decErr) { try { await decoder.flush(); } catch (e) { decErr = decErr || e; } }
+      try { decoder.close(); } catch {}
+      if (decErr || !outFrames) { const e = new FriendlyError('解碼這支影片的聲音時發生錯誤。請剪輯同仁匯出成 .mp4（AAC 聲音）後再試。'); e.friendlyFinal = true; throw e; }
+    }
+    const mono = resampler.result();
+    checkPeak(mono);
+    return { samples: mono, rate: 16000 };
   }
 
   async function encodeMp3(samples, rate, signal, onProgress) {
@@ -2689,7 +3007,7 @@
       setStep(0, 'active');
       const libPromise = PROVIDERS[p].local ? null : loadScript('lame');
       if (libPromise) libPromise.catch(() => {});
-      const { samples, rate } = await extractMono16k(state.videoFile, signal);
+      const { samples, rate } = await extractMono16k(state.videoFile, signal, (f) => { setStep(0, 'active', Math.round(f * 100) + '%'); setBar(f * 10); });
       const durSec = samples.length / rate;
       setStep(0, 'done', fmtShort(durSec)); setBar(10);
 
